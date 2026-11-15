@@ -5,9 +5,14 @@ ayuda para usar tm de una mejor manera y mejorar tiempos y ver en tiempo real la
 
 App para moverse en SITP y TransMilenio en Bogotá:
 
-- Mapa real de Bogotá y Soacha con filtros de paraderos, estaciones y puntos de recarga.
-- Recomienda la mejor ruta de ida y de vuelta entre dos puntos, con transbordos.
+- Entrada sin contraseña (solo tu nombre por ahora) y pantalla de inicio tipo Uber.
+- Mapa real de Bogotá y Soacha con filtros de paraderos, estaciones y recargas, y vista de pantalla completa.
+- Mi ubicación: paraderos cercanos, próximos buses y rutas desde donde estás (si el navegador la permite).
+- Recomienda la mejor ruta de ida y de vuelta entre dos puntos, con transbordos; si no hay ruta directa, lo dice.
 - Rutinas por día: dice a qué hora salir para llegar al paradero unos minutos antes del bus.
+- Tráfico estimado con el horario oficial por hora y con los buses en vivo; alertas oficiales en hora pico.
+- Lo que he aprendido: mejor ruta por rutina, tráfico típico por franja y mediciones en vivo.
+- Todas las rutas, con una vista 3D de cuánto tarda cada una y sus paraderos.
 - Horarios, próximas salidas y último bus de cada ruta.
 - Datos en vivo (llegadas, buses y alertas) con el conector de Croma, con tope de consultas para cuidar los créditos.
 - Comparación con moto y saldo estimado de la tarjeta.

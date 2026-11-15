@@ -141,4 +141,50 @@ prueba('los paraderos de un patron caen sobre su recorrido, en orden', () => {
   console.log('    patrones revisados ' + revisados + ', paraderos lejos del recorrido ' + lejos + ' de ' + total);
 });
 
+prueba('trafico tipico: la hora pico tarda mas que la madrugada', () => {
+  const r = P.planear(red, { desde: PORTAL_NORTE, hasta: MUSEO_NACIONAL, modo: 'salir', t: hora(17, 30), tipo: 'habil' });
+  const bus = r.trayectos[0].tramos.find((t) => t.tipo === 'bus');
+  assert(bus.trafico, 'cada tramo en bus trae su trafico');
+  assert(['fluido', 'moderado', 'pesado'].includes(bus.trafico.nivel));
+  assert(bus.trafico.seg >= bus.trafico.segMin && bus.trafico.extra === bus.trafico.seg - bus.trafico.segMin);
+  const perfil = P.perfilTrafico(red, 'habil', bus.pat, bus.posSube, bus.posBaja);
+  assert.strictEqual(perfil.length, 19);
+  const con = perfil.filter((x) => x.seg);
+  assert(con.length >= 12, 'hay servicio casi todo el dia');
+  const min = Math.min.apply(null, con.map((x) => x.seg));
+  assert(min >= bus.trafico.segMin - 1, 'el perfil no baja de lo mas rapido del dia');
+  const temprano = P.traficoTipico(red, 'habil', bus.pat, bus.posSube, bus.posBaja, hora(5, 10));
+  if (temprano) assert(temprano.extra <= bus.trafico.extra, 'de madrugada no hay mas trafico que en la tarde');
+  console.log('    ' + bus.letrero + ' a las 5:30 p. m.: ' + bus.trafico.nivel + ' +' + Math.round(bus.trafico.extra / 60) + ' min; por hora: ' +
+    perfil.map((x) => x.h + 'h ' + (x.seg ? Math.round(x.seg / 60) : '-')).join(', '));
+});
+
+prueba('resumen de una ruta: sentidos, salidas y minutos acumulados', () => {
+  const r = P.planear(red, { desde: PORTAL_NORTE, hasta: MUSEO_NACIONAL, modo: 'salir', t: hora(9), tipo: 'habil' });
+  const ruta = r.trayectos[0].tramos.find((t) => t.tipo === 'bus').ruta;
+  const s = P.resumenRuta(red, 'habil', ruta, hora(9));
+  assert(s.sentidos.length >= 1 && s.enServicio);
+  assert(s.dur > 0 && s.primera <= s.sale && s.sale <= s.ultima);
+  assert.strictEqual(s.acumulado.length, s.paraderos.length);
+  assert.strictEqual(s.acumulado[0], 0);
+  for (let q = 1; q < s.acumulado.length; q++) assert(s.acumulado[q] >= s.acumulado[q - 1], 'los minutos solo crecen');
+  assert(Math.abs(s.acumulado[s.acumulado.length - 1] - s.dur) <= 1, 'el ultimo paradero llega a la duracion total');
+  if (s.sentidos.length > 1) {
+    const otro = P.resumenRuta(red, 'habil', ruta, hora(9), s.sentidos[1].clave);
+    assert.strictEqual(otro.clave, s.sentidos[1].clave);
+  }
+  // una ruta circular del SITP (ida y regreso en un solo recorrido) se parte en dos sentidos razonables
+  const z8 = base.rut.cod.indexOf('Z8');
+  const ida = P.resumenRuta(red, 'habil', z8, hora(9));
+  assert(ida.sentidos.length === 2, 'la Z8 tiene ida y regreso');
+  const vuelta = P.resumenRuta(red, 'habil', z8, hora(9), ida.sentidos[1].clave);
+  assert(ida.paraderos.length + vuelta.paraderos.length === 198, 'los dos sentidos comparten el paradero de giro');
+  assert(ida.dur > 0 && vuelta.dur > 0 && vuelta.acumulado[0] === 0, 'cada sentido tiene su duracion y empieza en cero');
+  console.log('    Z8: hacia ' + base.par.nom[ida.sentidos[0].hasta] + ' ' + Math.round(ida.dur / 60) + ' min, hacia ' + base.par.nom[ida.sentidos[1].hasta] + ' ' + Math.round(vuelta.dur / 60) + ' min');
+  const noche = P.resumenRuta(red, 'habil', ruta, hora(27));
+  assert(!noche.enServicio && noche.dur > 0, 'fuera de servicio igual muestra cuanto tarda');
+  console.log('    ' + base.rut.cod[ruta] + ': ' + s.sentidos.length + ' sentidos, ' + Math.round(s.dur / 60) + ' min, primera ' + reloj(s.primera) +
+    ', ultima ' + reloj(s.ultima) + ', cada ' + (s.cada ? Math.round(s.cada / 60) + ' min' : '?'));
+});
+
 console.log(pruebas + ' pruebas pasaron');

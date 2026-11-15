@@ -58,7 +58,7 @@ button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; }
 svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
-#app { position: relative; height: 100%; overflow: hidden; }
+#app { position: relative; height: 100%; height: 100dvh; overflow: hidden; }
 #mapa { position: absolute; inset: 0; }
 .maplibregl-map { overflow: hidden; position: relative; }
 .maplibregl-canvas { position: absolute; left: 0; top: 0; }
@@ -203,6 +203,114 @@ select.entrada { appearance: none; -webkit-appearance: none; }
 .pin.punto { background: var(--azul); color: #fff; }
 .pin.punto::after { border-top-color: var(--azul); }
 
+
+/* ---------- entrada sin contraseña ---------- */
+#inicio { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: #121214; color: #f5f5f7; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.inicio-arriba { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; width: 100%; max-width: 520px; margin: 0 auto; padding: max(36px, env(safe-area-inset-top, 0px)) 28px 26px; }
+.inicio-arriba .logo { width: 68px; height: 68px; }
+.inicio-arriba h1 { margin: 22px 0 6px; font-size: 38px; line-height: 1.05; letter-spacing: -.03em; font-weight: 800; }
+.inicio-arriba .lema { margin: 0; font-size: 18px; color: #c7c7cc; }
+.ventajas { list-style: none; margin: 26px 0 0; padding: 0; display: grid; gap: 14px; }
+.ventajas li { display: flex; align-items: center; gap: 12px; font-size: 15.5px; color: #e5e5ea; }
+.ventajas svg.i { color: #34c759; }
+.inicio-abajo { flex: none; width: 100%; max-width: 520px; margin: 0 auto; padding: 22px 22px max(22px, env(safe-area-inset-bottom, 0px)); background: var(--superficie); color: var(--texto); border-radius: 26px 26px 0 0; animation: subir .45s cubic-bezier(.2, .8, .2, 1) both; }
+.inicio-abajo label { display: block; margin-bottom: 10px; font-size: 20px; font-weight: 750; letter-spacing: -.01em; }
+.inicio-abajo .boton { margin-top: 12px; height: 52px; font-size: 16.5px; border-radius: 14px; }
+.inicio-abajo .mini { margin: 12px 0 0; text-align: center; }
+.inicio-abajo .error { margin: 8px 0 0; color: var(--rojo); font-size: 13px; font-weight: 650; }
+#inicio.saliendo { animation: desvanecer .26s ease both; }
+@media (min-width: 900px) { .inicio-abajo { border-radius: 26px; margin-bottom: 40px; } }
+
+/* ---------- inicio tipo Uber ---------- */
+.a-donde { width: 100%; height: 56px; display: flex; align-items: center; gap: 12px; margin: 12px 0 2px; padding: 0 8px 0 16px; border: 0; border-radius: 16px; background: var(--superficie2); color: var(--texto); text-align: left; font-size: 18px; font-weight: 750; }
+.a-donde .crece { flex: 1; min-width: 0; }
+.a-donde .ahora { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border-radius: 999px; background: var(--superficie); font-size: 13.5px; font-weight: 700; }
+.a-donde .ahora svg.i { width: 17px; height: 17px; }
+.atajos { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 10px calc(-1 * var(--der)) 0 calc(-1 * var(--izq)); padding: 0 var(--der) 4px var(--izq); }
+.atajos::-webkit-scrollbar { display: none; }
+.atajo { flex: none; max-width: 190px; height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 6px; border: 0; border-radius: 14px; background: var(--superficie2); color: var(--texto); font-weight: 650; }
+.atajo .icono-lugar { width: 34px; height: 34px; border-radius: 10px; }
+.reloj .punto { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--texto2); vertical-align: 1px; }
+.reloj .punto.p-verde { background: var(--verde); }
+.reloj .punto.p-rojo { background: var(--rojo); }
+.icono-lugar.azul { background: var(--azul); color: #fff; }
+.salidas-cerca { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 5px; }
+.salidas-cerca span { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--texto2); font-variant-numeric: tabular-nums; }
+.salidas-cerca .chip { height: 21px; min-width: 30px; font-size: 12px; border-radius: 6px; }
+
+/* ---------- avisos, datos y barras ---------- */
+.aviso { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--naranja-suave); color: var(--texto); }
+.aviso > svg.i { color: var(--naranja); margin-top: 1px; }
+.aviso.a-rojo { background: var(--rojo-suave); }
+.aviso.a-rojo > svg.i { color: var(--rojo); }
+.aviso.a-verde { background: var(--verde-suave); }
+.aviso.a-verde > svg.i { color: var(--verde); }
+.aviso .crece { flex: 1; min-width: 0; }
+.aviso .mini { color: var(--texto); opacity: .82; margin-top: 2px; }
+.datos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.dato { padding: 10px 12px; border-radius: 14px; background: var(--superficie2); }
+.dato small { display: block; color: var(--texto2); font-size: 12px; font-weight: 650; }
+.dato b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.barras { display: flex; align-items: flex-end; gap: 3px; height: 64px; margin: 12px 0 4px; }
+.barras i { flex: 1; min-height: 4px; border-radius: 3px 3px 1px 1px; background: var(--verde); }
+.barras i.b-naranja { background: var(--naranja); }
+.barras i.b-rojo { background: var(--rojo); }
+.barras i.b-vacia { background: var(--superficie3); }
+.barras i.b-tuya { box-shadow: 0 0 0 2px var(--superficie2), 0 0 0 4px var(--texto); }
+.barras-eje { display: flex; justify-content: space-between; font-size: 11px; color: var(--texto2); }
+.grupos { margin-top: 10px; }
+.grupos .filtro { background: var(--superficie2); box-shadow: none; }
+.grupos .filtro[aria-pressed="true"] { background: var(--marca); }
+.minutos { width: 54px; flex: none; color: var(--texto2); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ---------- señales tipo Waze en el mapa ---------- */
+.senal-caja { pointer-events: none; }
+.senal { position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 4px 11px 4px 4px; border-radius: 999px; background: var(--superficie); color: var(--texto); box-shadow: var(--sombra); font-size: 12.5px; font-weight: 700; white-space: nowrap; animation: aparecer .38s cubic-bezier(.2, .9, .3, 1.25) both; }
+.senal::after { content: ""; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-top-color: var(--superficie); border-bottom: 0; }
+.senal-t { overflow: hidden; text-overflow: ellipsis; }
+.senal-i { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--marca); color: var(--sobre-marca); }
+.senal-i svg.i { width: 14px; height: 14px; stroke-width: 2.4; }
+.senal.s-verde .senal-i { background: #1e9e57; color: #fff; }
+.senal.s-naranja .senal-i { background: #e8850c; color: #fff; }
+.senal.s-roja .senal-i { background: #d23b2f; color: #fff; }
+.senal.s-roja { color: var(--rojo); }
+.senal.s-tiempo .senal-i { background: #0a66d8; color: #fff; }
+.senal.s-fuerte { background: var(--marca); color: var(--sobre-marca); }
+.senal.s-fuerte::after { border-top-color: var(--marca); }
+.senal.s-fuerte .senal-i { background: var(--sobre-marca); color: var(--marca); }
+
+/* ---------- mi ubicación ---------- */
+.yo-caja { position: relative; width: 22px; height: 22px; pointer-events: none; }
+.yo-halo { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(10, 132, 255, .28); animation: latido 2s ease-out infinite; }
+.yo-punto { position: absolute; inset: 0; border-radius: 50%; background: #0a84ff; border: 3px solid #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, .35); }
+.yo-caja.manual .yo-punto { background: #6a6a70; }
+.yo-caja.manual .yo-halo { background: rgba(106, 106, 112, .25); }
+
+/* ---------- pantalla completa ---------- */
+#cerrar-panel { position: absolute; top: 8px; right: 12px; z-index: 2; width: 34px; height: 34px; }
+#contenido > .cab:first-child { padding-right: 40px; }
+#mostrar-panel { position: absolute; left: 50%; bottom: max(18px, env(safe-area-inset-bottom, 0px)); z-index: 9; display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 20px 0 16px; border: 0; border-radius: 999px; background: var(--marca); color: var(--sobre-marca); box-shadow: var(--sombra); font-weight: 700; font-size: 15px; transform: translateX(-50%); animation: subirCentro .3s cubic-bezier(.2, .8, .2, 1) both; }
+#app.solo-mapa { --panel-px: 0px; --pestanas: 0px; }
+#app.solo-mapa #arriba, #app.solo-mapa #panel, #app.solo-mapa #pestanas { display: none; }
+#app.solo-mapa #tostada { bottom: 80px; }
+#app.solo-mapa[data-panel] #controles { display: flex; }
+#app.solo-mapa[data-panel] #atribucion { display: block; }
+
+/* ---------- movimiento ---------- */
+#contenido.entra > * { animation: entrar .3s cubic-bezier(.2, .8, .2, 1) both; }
+#contenido.entra > *:nth-child(2) { animation-delay: .03s; }
+#contenido.entra > *:nth-child(3) { animation-delay: .06s; }
+#contenido.entra > *:nth-child(n+4) { animation-delay: .09s; }
+.boton, .item, .filtro, .redondo, .atajo, .a-donde, .punto-b, #controles button, #pestanas button, #mostrar-panel { transition: transform .14s ease, background-color .2s ease; }
+.boton:active, .item:active, .filtro:active, .redondo:active, .atajo:active, .a-donde:active, .punto-b:active, #controles button:active, #pestanas button:active { transform: scale(.96); }
+#tostada:not([hidden]) { animation: subirCentro .28s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes entrar { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes subir { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes subirCentro { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes desvanecer { to { opacity: 0; } }
+@keyframes aparecer { from { opacity: 0; transform: translateY(8px) scale(.85); } to { opacity: 1; transform: none; } }
+@keyframes latido { from { transform: scale(.4); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
+
 @media (max-width: 899px) {
   #app[data-panel="max"] #controles, #app[data-panel="max"] #atribucion { display: none; }
 }
@@ -223,7 +331,8 @@ select.entrada { appearance: none; -webkit-appearance: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   #panel, #controles, #atribucion { transition: none; }
-  .espera i { animation-duration: 2.4s; }
+  *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  .yo-halo { display: none; }
 }
 </style>
 
@@ -254,6 +363,11 @@ select.entrada { appearance: none; -webkit-appearance: none; }
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
   <symbol id="i-editar" viewBox="0 0 24 24"><path d="M5 19l1-4L16.5 4.5l3 3L9 18z"/><path d="M14.5 6.5l3 3"/></symbol>
   <symbol id="i-borrar" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7"/></symbol>
+  <symbol id="i-ubicacion" viewBox="0 0 24 24"><path d="M20 4L3.8 10.6l7 2.6 2.6 7z"/></symbol>
+  <symbol id="i-trafico" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="18" rx="3"/><circle cx="12" cy="7.5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="16.5" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="i-subir" viewBox="0 0 24 24"><path d="M5.5 15L12 8.5l6.5 6.5"/></symbol>
+  <symbol id="i-3d" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
+  <symbol id="i-salir" viewBox="0 0 24 24"><path d="M14 4.5h3.5a2 2 0 012 2v11a2 2 0 01-2 2H14"/><path d="M10 16.5L5.5 12 10 7.5M5.5 12H15"/></symbol>
   <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M9 5L3.5 7v12.5L9 17.5l6 2 5.5-2V5L15 7z"/><path d="M9 5v12.5M15 7v12.5"/></symbol>
 </svg>
 
@@ -263,7 +377,7 @@ select.entrada { appearance: none; -webkit-appearance: none; }
   <div id="arriba">
     <button class="buscador" id="abrir-buscador" type="button">
       <svg class="logo" aria-hidden="true"><use href="#i-logo"/></svg>
-      <span>¿A dónde vas?</span>
+      <span>Buscar paradero, estación o ruta</span>
       <svg class="i" aria-hidden="true"><use href="#i-buscar"/></svg>
     </button>
     <div class="filtros" id="filtros" role="group" aria-label="Qué mostrar en el mapa"></div>
@@ -277,12 +391,14 @@ select.entrada { appearance: none; -webkit-appearance: none; }
   <div id="controles">
     <button type="button" id="c-mas" class="solo-ancho" aria-label="Acercar"><svg class="i"><use href="#i-mas"/></svg></button>
     <button type="button" id="c-menos" class="solo-ancho" aria-label="Alejar"><svg class="i"><use href="#i-menos"/></svg></button>
+    <button type="button" id="c-yo" aria-label="Mi ubicación"><svg class="i"><use href="#i-ubicacion"/></svg></button>
     <button type="button" id="c-centrar" aria-label="Centrar en mi ruta"><svg class="i"><use href="#i-centrar"/></svg></button>
   </div>
   <div id="atribucion">© OpenStreetMap · OpenMapTiles · OpenFreeMap</div>
 
   <section id="panel" aria-label="Panel">
     <button id="asa" type="button" aria-label="Cambiar el tamaño del panel"><span></span></button>
+    <button id="cerrar-panel" class="redondo" type="button" aria-label="Ver el mapa en pantalla completa" title="Ver el mapa completo"><svg class="i"><use href="#i-cerrar"/></svg></button>
     <div id="contenido">
       <div class="cab"><h2>A Tiempo</h2></div>
       <div class="espera"><i></i><span>Cargando la red de transporte…</span></div>
@@ -295,7 +411,28 @@ select.entrada { appearance: none; -webkit-appearance: none; }
     <button type="button" data-pestana="ajustes"><svg class="i"><use href="#i-ajustes"/></svg>Ajustes</button>
   </nav>
 
+  <button id="mostrar-panel" type="button" hidden><svg class="i" aria-hidden="true"><use href="#i-subir"/></svg>Mostrar panel</button>
   <div id="tostada" role="status" hidden></div>
+</div>
+
+<div id="inicio" role="dialog" aria-modal="true" aria-labelledby="inicio-titulo" hidden>
+  <div class="inicio-arriba">
+    <svg class="logo" aria-hidden="true"><use href="#i-logo"/></svg>
+    <h1 id="inicio-titulo">A Tiempo</h1>
+    <p class="lema">Llega a tiempo en SITP y TransMilenio.</p>
+    <ul class="ventajas">
+      <li><svg class="i" aria-hidden="true"><use href="#i-reloj"/></svg>Te dice a qué hora salir</li>
+      <li><svg class="i" aria-hidden="true"><use href="#i-bus"/></svg>La mejor ruta de ida y vuelta</li>
+      <li><svg class="i" aria-hidden="true"><use href="#i-vivo"/></svg>Buses, tráfico y alertas en vivo</li>
+    </ul>
+  </div>
+  <form class="inicio-abajo" id="inicio-form" novalidate>
+    <label for="inicio-nombre">¿Cómo te llamas?</label>
+    <input id="inicio-nombre" class="entrada" type="text" autocomplete="given-name" maxlength="30" placeholder="Tu nombre" enterkeyhint="go">
+    <p id="inicio-error" class="error" hidden>Escribe tu nombre para seguir.</p>
+    <button type="submit" class="boton principal ancho">Continuar</button>
+    <p class="mini">Sin contraseña por ahora. Tus lugares y rutinas quedan en tu espacio privado.</p>
+  </form>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>

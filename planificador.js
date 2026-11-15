@@ -190,6 +190,87 @@
     return mejor;
   }
 
+  /* ---------- trafico segun el horario ---------- */
+
+  /* El horario oficial trae cuanto tarda cada viaje segun la hora: en hora pico los buses van mas lento.
+   * Se compara lo que tarda un tramo a una hora con lo mas rapido del dia para ese mismo recorrido. */
+  function duracionMinima(red, tipo, p) {
+    var cache = red.minimos || (red.minimos = {});
+    var lista = cache[tipo] || (cache[tipo] = {});
+    if (lista[p.i] !== undefined) return lista[p.i];
+    var v = red.viajes[tipo] && red.viajes[tipo][p.i], m = null, q;
+    if (v && v.dur) for (q = 0; q < v.dur.length; q++) if (v.dur[q] > 0 && (m === null || v.dur[q] < m)) m = v.dur[q];
+    if (v && v.frec) for (q = 0; q < v.frec.length; q++) if (v.frec[q][3] > 0 && (m === null || v.frec[q][3] < m)) m = v.frec[q][3];
+    lista[p.i] = m;
+    return m;
+  }
+  function segTramo(p, posSube, posBaja, dur) { return Math.round((p.o[posBaja] - p.o[posSube]) * dur / p.D); }
+
+  /* Trafico tipico de un tramo en bus que pasa por posSube a la hora t: { nivel, extra, seg, segMin } o null */
+  function traficoTipico(red, tipo, pat, posSube, posBaja, t) {
+    var p = red.pat[pat], v = salidaEn(red, tipo, p, posSube, t), m = duracionMinima(red, tipo, p);
+    if (!v || !m || posBaja <= posSube) return null;
+    var seg = segTramo(p, posSube, posBaja, v.dur), segMin = segTramo(p, posSube, posBaja, m), extra = Math.max(0, seg - segMin);
+    var nivel = extra < Math.max(120, segMin * 0.12) ? 'fluido' : (extra < Math.max(300, segMin * 0.3) ? 'moderado' : 'pesado');
+    return { nivel: nivel, extra: extra, seg: seg, segMin: segMin };
+  }
+
+  /* Lo que tarda un tramo segun la hora del dia, de 5 a. m. a 11 p. m.: [{ h, seg }] (seg null si no hay servicio) */
+  function perfilTrafico(red, tipo, pat, posSube, posBaja) {
+    var p = red.pat[pat], salida = [];
+    for (var hh = 5; hh <= 23; hh++) {
+      var v = salidaEn(red, tipo, p, posSube, hh * 3600);
+      salida.push({ h: hh, seg: v && v.sale < (hh + 1) * 3600 ? segTramo(p, posSube, posBaja, v.dur) : null });
+    }
+    return salida;
+  }
+
+  /* Cuantos viajes tiene un patron en un tipo de dia (para elegir el sentido principal de una ruta) */
+  function viajesDelPatron(red, tipo, p) {
+    var v = red.viajes[tipo] && red.viajes[tipo][p.i];
+    if (!v) return 0;
+    var n = v.ini ? v.ini.length : 0;
+    if (v.frec) v.frec.forEach(function (w) { n += Math.max(1, Math.round((w[1] - w[0]) / Math.max(60, w[2]))); });
+    return n;
+  }
+
+  /* Resumen de una ruta para mostrarla completa: sentidos, duracion a la hora t, primera y ultima salida,
+   * cada cuanto pasa y minutos acumulados en cada paradero. Muchas rutas del SITP vienen como un solo recorrido
+   * circular (ida y regreso juntos): se parten en el punto de giro `k`. `sel` ('patron:inicio') elige el sentido. */
+  function resumenRuta(red, tipo, ruta, t, sel) {
+    var variantes = [];
+    for (var i = 0; i < red.pat.length; i++) {
+      var p0 = red.pat[i];
+      if (p0.r !== ruta) continue;
+      var n = viajesDelPatron(red, tipo, p0), ultimo = p0.s.length - 1;
+      if (!n) continue;
+      var cortes = p0.k > 0 && p0.k < ultimo ? [[0, p0.k], [p0.k, ultimo]] : [[0, ultimo]];
+      cortes.forEach(function (c) {
+        variantes.push({ clave: i + ':' + c[0], pat: i, ini: c[0], fin: c[1], n: n, desde: p0.s[c[0]], hasta: p0.s[c[1]], paradas: c[1] - c[0] + 1 });
+      });
+    }
+    variantes.sort(function (a, b) { return b.n - a.n || a.ini - b.ini; });
+    // un sentido por destino: se quitan variantes que terminan donde otra mas usada
+    var vistos = {}, sentidos = [];
+    variantes.forEach(function (x) { if (!vistos[x.hasta] && sentidos.length < 3) { vistos[x.hasta] = 1; sentidos.push(x); } });
+    if (!sentidos.length) return { ruta: ruta, sentidos: [], sinServicio: true };
+    var elegido = sentidos[0];
+    sentidos.forEach(function (x) { if (x.clave === sel) elegido = x; });
+    var p = red.pat[elegido.pat], a = elegido.ini, b = elegido.fin;
+    var ahora = salidaEn(red, tipo, p, a, t), primera = salidaEn(red, tipo, p, a, 0), ult = ultima(red, tipo, p, a);
+    var ref = ahora || primera;
+    var horas = proximas(red, tipo, p, a, ahora ? ahora.sale : 0, 7), saltos = [];
+    for (var q = 1; q < horas.length; q++) saltos.push(horas[q] - horas[q - 1]);
+    saltos.sort(function (x, y) { return x - y; });
+    var acumulado = [];
+    for (q = a; q <= b; q++) acumulado.push(ref ? segTramo(p, a, q, ref.dur) : 0);
+    var m = duracionMinima(red, tipo, p);
+    return { ruta: ruta, clave: elegido.clave, pat: elegido.pat, ini: a, fin: b, sentidos: sentidos,
+             paraderos: Array.prototype.slice.call(p.s, a, b + 1), acumulado: acumulado,
+             dur: ref ? segTramo(p, a, b, ref.dur) : null, durMin: m ? segTramo(p, a, b, m) : null, enServicio: !!ahora, sale: ahora ? ahora.sale : null,
+             primera: primera ? primera.sale : null, ultima: ult, cada: saltos.length ? saltos[Math.floor(saltos.length / 2)] : null };
+  }
+
   /* Tablero de un paradero: proximas salidas de todas las rutas que pasan */
   function salidasParadero(red, tipo, paradero, t, cuantas) {
     var salida = [];
@@ -339,7 +420,8 @@
         salida.push({ tipo: 'bus', pat: t.pat, ruta: nom.ruta, cod: nom.cod, letrero: nom.letrero, destino: nom.destino, sis: nom.sis,
                       sube: t.sube, baja: t.baja, posSube: t.posSube, posBaja: t.posBaja, paradas: t.posBaja - t.posSube,
                       sale: t.sale, llega: t.llega, ini: t.ini, dur: t.dur,
-                      siguientes: proximas(red, tipo, p, t.posSube, t.sale + 1, 3), ultimo: ultima(red, tipo, p, t.posSube) });
+                      siguientes: proximas(red, tipo, p, t.posSube, t.sale + 1, 3), ultimo: ultima(red, tipo, p, t.posSube),
+                      trafico: traficoTipico(red, tipo, t.pat, t.posSube, t.posBaja, t.sale) });
         reloj = t.llega;
       }
       llega = reloj;
@@ -486,6 +568,8 @@
       return todo.slice(0, m.cuantas || 14);
     }
     if (m.orden === 'pasos') return pasosDeRuta(red, m.tipo, m.ruta, m.paradero, m.desde, m.hasta);
+    if (m.orden === 'resumen') return resumenRuta(red, m.tipo, m.ruta, m.t, m.sel);
+    if (m.orden === 'perfil') return perfilTrafico(red, m.tipo, m.pat, m.posSube, m.posBaja);
     if (m.orden === 'proximas') {
       var p = red.pat[m.pat];
       return { horas: proximas(red, m.tipo, p, m.pos, m.t, m.cuantas || 4), ultimo: ultima(red, m.tipo, p, m.pos) };
@@ -573,7 +657,7 @@
 
   var api = { distancia: distancia, segundosCaminando: segundosCaminando, crearRed: crearRed, cargarViajes: cargarViajes,
               cercanos: cercanos, salidaEn: salidaEn, proximas: proximas, ultima: ultima, salidasParadero: salidasParadero,
-              pasosDeRuta: pasosDeRuta, atender: atender, planear: planear, diaServicio: diaServicio, tipoDeFecha: tipoDeFecha, instanteDe: instanteDe, nombreTramo: nombreTramo, pasoPor: pasoPor,
+              pasosDeRuta: pasosDeRuta, atender: atender, traficoTipico: traficoTipico, perfilTrafico: perfilTrafico, resumenRuta: resumenRuta, planear: planear, diaServicio: diaServicio, tipoDeFecha: tipoDeFecha, instanteDe: instanteDe, nombreTramo: nombreTramo, pasoPor: pasoPor,
               decodificar: decodificar, ubicarEnForma: ubicarEnForma, puntoEnForma: puntoEnForma, tramoDeForma: tramoDeForma,
               FACTOR_CAMINATA: FACTOR_CAMINATA };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else raiz.Planificador = api;
