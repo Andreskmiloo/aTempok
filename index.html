@@ -203,6 +203,10 @@ select.entrada { appearance: none; -webkit-appearance: none; }
 .pin.punto { background: var(--azul); color: #fff; }
 .pin.punto::after { border-top-color: var(--azul); }
 
+@media (max-width: 899px) {
+  #app[data-panel="max"] #controles, #app[data-panel="max"] #atribucion { display: none; }
+}
+
 /* ---------- pantallas anchas ---------- */
 @media (min-width: 900px) {
   :root { --panel-px: 0px; --pestanas: 0px; }

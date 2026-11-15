@@ -145,7 +145,7 @@
   function guardarLocal() {
     try { localStorage.setItem(CLAVE, JSON.stringify(E)); } catch (e) { /* sin almacenamiento: sigue en memoria */ }
   }
-  var nube = { doc: null, reloj: null, ocupada: false, pendiente: false };
+  var nube = { doc: null, reloj: null, ocupada: false, pendiente: false, buscando: false };
   function guardar() {
     E.actualizado = Date.now();
     guardarLocal();
@@ -168,6 +168,9 @@
   }
   function iniciarNube() {
     if (!window.claude || !window.claude.use) return;
+    nube.buscando = true;
+    function terminar() { if (nube.buscando) { nube.buscando = false; if (vista === 'hoy') pintar(); } }
+    setTimeout(terminar, 12000);
     Promise.all([window.claude.use('user'), window.claude.use('db')]).then(function (r) {
       if (!r[0] || !r[1]) return null;
       return r[0].id().then(function (id) {
@@ -177,15 +180,17 @@
       });
     }).then(function (foto) {
       if (!nube.doc) return;
-      var remoto = foto && foto.exists ? foto.data() : null;
+      if (!foto) { nube.doc = null; return; }   // la base no respondio: no se escribe para no pisar lo guardado
+      var remoto = foto.exists ? foto.data() : null;
       if (remoto && (remoto.actualizado || 0) > (E.actualizado || 0)) {
         E = normalizar(JSON.parse(JSON.stringify(remoto)));
         guardarLocal();
+        nube.buscando = false;
         alCambiarDatos();
       } else if (E.actualizado && (!remoto || (remoto.actualizado || 0) < E.actualizado)) {
         programarNube();
       }
-    }).catch(function () { /* sin base: los datos quedan en el navegador */ });
+    }).catch(function () { nube.doc = null; }).then(terminar);
   }
   function alCambiarDatos() { pintarLugares(); planearViajes(); pintar(); }
   function lugar(id) { for (var i = 0; i < E.lugares.length; i++) if (E.lugares[i].id === id) return E.lugares[i]; return null; }
@@ -387,7 +392,7 @@
           layout: { 'text-field': ['get', 'nombre'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-max-width': 9, 'text-allow-overlap': false },
           paint: { 'text-color': c.lugar, 'text-halo-color': c.halo, 'text-halo-width': 1.8 } },
         circulo('toque', 'toque', { paint: { 'circle-radius': 13, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': c.lugar, 'circle-stroke-width': 2.5 } }),
-        circulo('buses', 'buses', { paint: { 'circle-radius': z([10, 5, 15, 10]), 'circle-color': ['get', 'color'], 'circle-stroke-color': c.blanco, 'circle-stroke-width': 2.2 } }),
+        circulo('buses', 'buses', { paint: { 'circle-radius': z([10, 5.5, 15, 10]), 'circle-color': '#e8850c', 'circle-stroke-color': c.blanco, 'circle-stroke-width': 2.4 } }),
         { id: 'buses-texto', type: 'symbol', source: 'buses', minzoom: 12,
           layout: { 'text-field': ['get', 'cod'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, -1.5], 'text-anchor': 'bottom', 'text-allow-overlap': true },
           paint: { 'text-color': c.lugar, 'text-halo-color': c.halo, 'text-halo-width': 1.8 } }
@@ -589,6 +594,7 @@
   }
   function fijarPanel(estado) {
     panelEstado = estado;
+    $('app').setAttribute('data-panel', estado);
     if (esAncho()) { raiz.style.removeProperty('--panel-px'); return; }
     raiz.style.setProperty('--panel-px', altoPanel(estado) + 'px');
   }
@@ -810,7 +816,7 @@
     Promise.all(codigos.slice(0, 2).map(function (r) {
       return llamar('transmilenio_vehicles', { route: base.rut.cod[r], per_page: 200 }).then(function (d) {
         return (d.vehicles || []).filter(function (x) { return String(x.route_id) === base.rut.id[r] && typeof x.latitude === 'number'; })
-          .map(function (x) { return punto([x.longitude, x.latitude], { cod: base.rut.cod[r], color: COLOR_SIS[base.rut.sis[r]], placa: x.license_plate || '', va: x.stop_name || '' }); });
+          .map(function (x) { return punto([x.longitude, x.latitude], { cod: base.rut.cod[r], placa: x.license_plate || '', va: x.stop_name || '' }); });
       });
     })).then(function (grupos) {
       var todos = [];
@@ -879,7 +885,12 @@
     c.scrollTop = arriba;
   }
 
-  function nombreDia(v) { return v.dias === 0 ? 'Hoy' : (v.dias === 1 ? 'Mañana' : DIAS[diaSemana(v.fecha)]); }
+  function nombreDia(v) {
+    var b = new Date(ahora().getTime() - 5 * 3600000);   // calendario de Bogota
+    var hoy = b.getUTCFullYear() + '-' + dos(b.getUTCMonth() + 1) + '-' + dos(b.getUTCDate());
+    if (v.fecha === hoy || (v.dias === 0 && v.fecha < hoy)) return 'Hoy';
+    return v.fecha === sumarDias(hoy, 1) ? 'Mañana' : DIAS[diaSemana(v.fecha)];
+  }
 
   function vistaHoy(c) {
     var s = servicio();
@@ -888,6 +899,7 @@
     c.appendChild(cabecera(viajes.length && viajes[0].dias > 0 ? 'Tu próximo viaje' : 'Hoy', null, saldo));
     c.appendChild(h('p', { class: 'sub', text: fechaLarga(s.fecha) + (s.tipo === 'festivo' && diaSemana(s.fecha) !== 0 ? ' · festivo' : '') }));
 
+    if (!E.lugares.length && nube.buscando) { c.appendChild(espera('Cargando tus lugares y rutinas…')); return; }
     if (!E.lugares.length) {
       var logo = icono('logo');
       logo.setAttribute('class', 'logo');
@@ -986,6 +998,7 @@
       boton('En vivo', 'claro chico', function () { consultarVivo(v, false); }, 'vivo'),
       boton(v.abierto ? 'Menos' : 'Detalles', 'claro chico', function () { v.abierto = !v.abierto; pintar(); })));
     if (v.abierto) {
+      if (plan.fuente === 'vivo') t.appendChild(h('p', { class: 'mini', style: 'margin:12px 0 -4px', text: 'El detalle de abajo sigue el horario oficial.' }));
       t.appendChild(detalleTrayecto(tr, a, b));
       t.appendChild(lineaMoto(a, b, tr.sale, v.tipo, tr.duracion, false));
       t.appendChild(h('div', { class: 'botones' },
