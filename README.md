@@ -8,6 +8,7 @@ App para moverse en SITP y TransMilenio en Bogotá:
 - Entrada sin contraseña (solo tu nombre por ahora) y pantalla de inicio tipo Uber.
 - Mapa real de Bogotá y Soacha con filtros de paraderos, estaciones y recargas, y vista de pantalla completa.
 - Mi ubicación: paraderos cercanos, próximos buses y rutas desde donde estás (si el navegador la permite).
+- Pantalla de inicio «¿A dónde vas?»: eliges el destino (buscar, lugares guardados o el mapa); sale desde tu ubicación o desde Casa.
 - Recomienda la mejor ruta de ida y de vuelta entre dos puntos, con transbordos; si no hay ruta directa, lo dice.
 - Rutinas por día: dice a qué hora salir para llegar al paradero unos minutos antes del bus.
 - Tráfico estimado con el horario oficial por hora y con los buses en vivo; alertas oficiales en hora pico.

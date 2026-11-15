@@ -55,6 +55,7 @@
   var lineaInfo = null, lineaSel = null, plano = false;   // ruta vista completa
   var perfiles = {};                             // trafico por hora de cada rutina (para "Lo que he aprendido")
   var rutasFiltro = { texto: '', sis: -1 };
+  var destinoVisto = false;                      // la pantalla "A donde vas?" se abre una vez por sesion
 
   /* ---------- utilidades ---------- */
 
@@ -140,7 +141,7 @@
   }
   function pintarSiHoy() {
     var enfoque = document.activeElement;
-    if (base && vista === 'hoy' && !(enfoque && /^(INPUT|SELECT|TEXTAREA)$/.test(enfoque.tagName))) pintar();
+    if (base && (vista === 'hoy' || vista === 'destino') && !(enfoque && /^(INPUT|SELECT|TEXTAREA)$/.test(enfoque.tagName))) pintar();
   }
   function textoReloj() {
     var hora = hora12(servicio().seg);
@@ -892,7 +893,7 @@
     caja.classList.add('saliendo');
     setTimeout(function () { caja.classList.remove('saliendo'); pintarEntrada(); }, pocoMovimiento() ? 0 : 260);
     if ($('inicio-nombre').blur) $('inicio-nombre').blur();
-    ir('hoy');
+    if (vista !== 'destino') ir('hoy'); else pintar();
   }
   function cerrarSesion() {
     E.perfil.nombre = ''; nube.nombrePendiente = '';
@@ -1320,7 +1321,7 @@
     });
     if (!base) { c.appendChild(cabecera('A Tiempo')); c.appendChild(espera('Cargando la red de transporte…')); return; }
     ({ hoy: vistaHoy, ruta: vistaRuta, toque: vistaToque, buscar: vistaBuscar, rutinas: vistaRutinas, rutina: vistaRutina,
-       ajustes: vistaAjustes, lugar: vistaLugar, linea: vistaLinea, rutas: vistaRutas }[vista] || vistaHoy)(c);
+       ajustes: vistaAjustes, lugar: vistaLugar, linea: vistaLinea, rutas: vistaRutas, destino: vistaDestino }[vista] || vistaHoy)(c);
     c.scrollTop = arriba;
   }
 
@@ -1344,6 +1345,44 @@
       h('span', { class: 'icono-lugar' + (gris ? ' gris' : '') }, icono(nombreIcono)), h('span', { class: 'corta', text: texto }));
   }
   function abrirRutas() { rutasFiltro.texto = ''; ir('rutas'); if (!esAncho()) fijarPanel('max'); }
+
+  /* ----- pantalla "A donde vas?" al abrir la app ----- */
+
+  // Casa si existe; si no, el primer lugar guardado
+  function origenCasa() { return lugar('casa') || E.lugares[0] || null; }
+  // Origen por defecto: tu ubicacion si esta activa; si no, Casa
+  function origenPorDefecto() {
+    var yo = miPunto();
+    if (yo) return yo;
+    var c = origenCasa();
+    return c ? { tipo: 'lugar', id: c.id } : null;
+  }
+  function vistaDestino(c) {
+    var yo = miPunto(), origen = origenPorDefecto(), desdeTexto = 'Elige el origen';
+    if (yo) desdeTexto = 'Mi ubicación';
+    else if (origen && lugar(origen.id)) desdeTexto = lugar(origen.id).nombre;
+    c.appendChild(h('h2', { class: 'destino-titulo', text: '¿A dónde vas?' }));
+    c.appendChild(h('button', { type: 'button', class: 'a-donde', onclick: function () { abrirBuscador('hasta', 'destino'); } },
+      icono('buscar'), h('span', { class: 'crece', text: 'Paradero, estación, ruta o lugar' })));
+    c.appendChild(h('button', { type: 'button', class: 'punto-b', style: 'margin-top:10px', onclick: function () { abrirBuscador('desde', 'destino'); } },
+      h('small', { text: 'Desde' }), h('b', { class: 'corta', text: desdeTexto }), icono('cambiar')));
+    c.appendChild(h('p', { class: 'mini', style: 'margin:6px 2px 0', text: yo ? 'Sale desde donde estás. Toca Desde si vas desde otro lugar.' : 'Sale desde tu casa. Toca Desde para cambiarlo o activa tu ubicación.' }));
+    var atajos = h('div', { class: 'atajos' });
+    E.lugares.forEach(function (l) {
+      if (origen && origen.id === l.id) return;
+      atajos.appendChild(atajo(l.icono || 'pin', l.nombre, function () { abrirRuta(origen, { tipo: 'lugar', id: l.id }, {}); }));
+    });
+    c.appendChild(atajos);
+    c.appendChild(h('div', { class: 'botones' },
+      boton('Elegir en el mapa', 'claro chico', function () {
+        elegirEnMapa('Toca el mapa: a dónde vas', function (lat, lon) {
+          var cerca = P.cercanos(red, lat, lon, 400)[0];
+          abrirRuta(origen, { tipo: 'punto', lat: lat, lon: lon, nombre: cerca ? 'Cerca de ' + base.par.nom[cerca[0]] : 'Punto en el mapa' }, {});
+        });
+      }, 'mapa'),
+      boton('Todas las rutas', 'claro chico', abrirRutas, 'bus')));
+    c.appendChild(h('div', { class: 'botones' }, boton('Ver mi próximo viaje', 'principal chico', function () { ir('hoy'); }, 'reloj')));
+  }
   function buscarDestino() { prepararRuta(null, null, {}); abrirBuscador('hasta'); }
 
   function vistaHoy(c) {
@@ -1584,7 +1623,7 @@
   function prepararRuta(desde, hasta, op) {
     var yo = miPunto();
     if (!desde && yo && !(hasta && hasta.yo)) desde = yo;
-    else if (!desde && E.lugares[0] && !(hasta && hasta.tipo === 'lugar' && hasta.id === E.lugares[0].id)) desde = { tipo: 'lugar', id: E.lugares[0].id };
+    else if (!desde && origenCasa() && !(hasta && hasta.tipo === 'lugar' && hasta.id === origenCasa().id)) desde = { tipo: 'lugar', id: origenCasa().id };
     Q.desde = desde; Q.hasta = hasta; Q.modo = op.modo || 'ahora';
     Q.hora = op.hora || segAHhmm(servicio().seg); Q.rutina = op.rutina || null;
     Q.fecha = op.fecha || null; Q.tipo = op.tipo || null;
@@ -1782,7 +1821,7 @@
     }
     for (i = 0; i < base.par.id.length; i++) if (base.par.est[i] < 0) indice.push({ t: sinTildes(base.par.nom[i] + ' ' + base.par.cod[i]), tipo: 'paradero', i: i });
   }
-  function abrirBuscador(contexto) { busqueda = { contexto: contexto, texto: '' }; ir('buscar'); if (!esAncho()) fijarPanel('max'); }
+  function abrirBuscador(contexto, volver) { busqueda = { contexto: contexto, texto: '', volver: volver || null }; ir('buscar'); if (!esAncho()) fijarPanel('max'); }
   function elegirResultado(ref, punto0) {
     var ctx = busqueda.contexto;
     if (ctx === 'desde' || ctx === 'hasta') { Q[ctx] = ref; ir('ruta'); if (!esAncho()) fijarPanel('medio'); calcularRuta(); return; }
@@ -1792,7 +1831,7 @@
   }
   function vistaBuscar(c) {
     var ctx = busqueda.contexto, enRuta = ctx === 'desde' || ctx === 'hasta';
-    c.appendChild(cabecera(ctx === 'desde' ? '¿Desde dónde?' : (ctx === 'hasta' ? '¿A dónde vas?' : 'Buscar'), function () { if (enRuta) ir('ruta'); else volverAHoy(); if (!esAncho()) fijarPanel('medio'); }));
+    c.appendChild(cabecera(ctx === 'desde' ? '¿Desde dónde?' : (ctx === 'hasta' ? '¿A dónde vas?' : 'Buscar'), function () { if (busqueda.volver) ir(busqueda.volver); else if (enRuta) ir('ruta'); else volverAHoy(); if (!esAncho()) fijarPanel('medio'); }));
     var resultados = h('div');
     var entrada = h('input', { class: 'entrada', id: 'buscar-texto', type: 'search', placeholder: 'Paradero, estación o ruta', autocomplete: 'off', value: busqueda.texto,
       oninput: function (e) { busqueda.texto = e.target.value; llenar(); } });
@@ -2325,6 +2364,8 @@
       cargarCapasTransporte();
       motor.iniciar();
       planearViajes();
+      // al abrir la app aparece la pantalla "A donde vas?" (una vez por sesion)
+      if (!destinoVisto) { destinoVisto = true; vista = 'destino'; if (!esAncho()) fijarPanel('max'); }
       pintar();
       iniciarNube();
       iniciarVivo();
