@@ -13,6 +13,7 @@ App para moverse en SITP y TransMilenio en Bogotá:
 - Rutinas por día: dice a qué hora salir para llegar al paradero unos minutos antes del bus.
 - Tráfico estimado con el horario oficial por hora y con los buses en vivo; alertas oficiales en hora pico.
 - Lo que he aprendido: mejor ruta por rutina, tráfico típico por franja y mediciones en vivo.
+- Buses en vivo cada 2 minutos, con movimiento estimado entre lecturas; «Buses que me sirven» muestra a la vez las 3 opciones más rápidas.
 - Todas las rutas, con una vista 3D de cuánto tarda cada una y sus paraderos.
 - Horarios, próximas salidas y último bus de cada ruta.
 - Datos en vivo (llegadas, buses y alertas) con el conector de Croma, con tope de consultas para cuidar los créditos.

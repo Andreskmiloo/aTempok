@@ -43,3 +43,4 @@ description: Mantener y publicar "A Tiempo", la app de SITP/TransMilenio de este
 - OpenFreeMap exige un User-Agent propio y honesto; no falsificarlo.
 - Cada consulta en vivo cuesta 10 créditos de Croma: siempre al pulsar o con tope diario.
 - Sin GPS garantizado, sin NFC y sin avisos con la app cerrada; la ubicación tiene respaldo manual tocando el mapa.
+- Buses reales (`transmilenio_vehicles`): la posición cae a pocos metros del recorrido, pero `stop_id`/`stop_name` no es fiable (puede estar a 15 km) y `speed_kmh` viene vacío; usar `reported_at` como hora de la lectura.

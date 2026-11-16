@@ -616,6 +616,13 @@
   function pintarSenales() {
     quitarSenales();
     if (!activo || !mapa || !mapaListo) return;
+    if (activo.varios) {
+      activo.varios.forEach(function (op, i) {
+        var t = primerBus(op), p = red.pat[t.pat], medio = p.s[Math.round(t.posSube + (t.posBaja - t.posSube) * (i + 1) / (activo.varios.length + 1))];
+        ponerSenal(red.lon[medio], red.lat[medio], (i + 1) + ' · ' + t.letrero + ' · ' + minutos(op.duracion), i === 0 ? 'fuerte' : 'neutra', 'bus');
+      });
+      return;
+    }
     var tr = activo.tr, v = activo.v, lista = [];
     var buses = tr.tramos.filter(function (t) { return t.tipo === 'bus'; });
     var vivo = v && v.vivo && v.vivo.estado === 'listo' && Date.now() - v.vivo.en < 10 * 60000 ? v.vivo : null;
@@ -756,7 +763,7 @@
     var hallados = mapa.queryRenderedFeatures(caja, { layers: capas });
     if (hallados.length) {
       var p = hallados[0].properties;
-      if (hallados[0].layer.id === 'buses') { tostada('Bus ' + p.cod + (p.placa ? ' · ' + p.placa : '') + (p.va ? ' · va hacia ' + p.va : '')); return; }
+      if (hallados[0].layer.id === 'buses') { tostada('Bus ' + p.cod + (p.placa ? ' · ' + p.placa : '') + ''); return; }
       if (p.tipo === 'estacion') { seleccionar({ tipo: 'estacion', e: +p.e }); return; }
       if (p.i !== undefined) { seleccionar({ tipo: 'paradero', i: +p.i }); return; }
     }
@@ -1253,6 +1260,38 @@
     var largo = m.acum[hi] - m.acum[lo], u = largo ? (metros - m.acum[lo]) / largo : 0, a = m.forma[lo], b = m.forma[hi];
     return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
   }
+  /* Las 3 opciones mas rapidas con rutas distintas, todas a la vez en el mapa con sus buses en vivo */
+  function verVarios(trayectos, a, b) {
+    var ops = [], vistas = {};
+    trayectos.forEach(function (tr) { var t = primerBus(tr); if (t && !vistas[t.ruta] && ops.length < 3) { vistas[t.ruta] = 1; ops.push(tr); } });
+    if (!ops.length) return;
+    if (!mcp) { tostada(textoError({ code: 'sin_conector' })); return; }
+    if (!quedanConsultas(ops.length)) { tostada('Necesitas ' + ops.length + ' consultas en vivo y tu tope de hoy no alcanza. Súbelo en Ajustes.'); return; }
+    cargarFormas().then(function (lista) {
+      if (linea !== null) salirDeLinea();
+      var lineas = [], paradas = [], limites = [];
+      ops.forEach(function (tr) {
+        var t = primerBus(tr), p = red.pat[t.pat], forma = formaDe(lista, t.ruta), coords = [], q;
+        if (forma.length > 1) { var pos = posDe(p, forma); coords = P.tramoDeForma(forma, pos[t.posSube], pos[t.posBaja]); }
+        else for (q = t.posSube; q <= t.posBaja; q++) coords.push([red.lon[p.s[q]], red.lat[p.s[q]]]);
+        var props = { tipo: 'bus', color: COLOR_SIS[t.sis] };
+        if (t.trafico) props.borde = COLOR_TRAFICO[t.trafico.nivel];
+        lineas.push(trazo(coords, props));
+        paradas.push(punto([red.lon[t.sube], red.lat[t.sube]], { extremo: 'sube', color: COLOR_SIS[t.sis], i: t.sube, nombre: 'Sube: ' + base.par.nom[t.sube] }));
+        coords.forEach(function (x) { limites.push(x); });
+      });
+      limites.push([a.lon, a.lat], [b.lon, b.lat]);
+      activo = { tr: ops[0], desde: a, hasta: b, v: null, varios: ops };
+      datosMapa.ruta = fc(lineas); datosMapa.rutaCompleta = VACIO; datosMapa.rutaParadas = fc(paradas);
+      ponerDatos(['ruta', 'rutaCompleta', 'rutaParadas']);
+      pintarSenales();
+      encuadrar(limites);
+      if (!esAncho()) fijarPanel('min');
+      if (!filtros.buses) { filtros.buses = true; pintarFiltros(); }
+      tostada('Buscando los buses de ' + ops.map(function (tr) { return primerBus(tr).letrero; }).join(', ') + '…');
+      refrescarBuses(true);
+    });
+  }
   function pararBuses() {
     clearTimeout(flota.reloj); clearInterval(flota.anim);
     flota = { clave: '', rutas: [], buses: {}, reloj: null, anim: null, cuenta: 0, en: 0 };
@@ -1264,6 +1303,7 @@
     var ahoraMs = Date.now(), puntos = [], cubos = [], en3d = mapa && mapa.getPitch() > 5;
     Object.keys(flota.buses).forEach(function (id) {
       var b = flota.buses[id], c = [b.lon, b.lat], m = metricas[b.ruta];
+      if (flota.limite && flota.limite[b.ruta] !== undefined && b.s !== null && b.s > flota.limite[b.ruta]) return;
       if (m && b.s !== null) c = puntoEnMetros(m, b.s + b.v * Math.min(150, (ahoraMs - b.t) / 1000));
       puntos.push(punto(c, { cod: base.rut.cod[b.ruta], placa: b.placa, va: b.va }));
       if (en3d) {
@@ -1278,7 +1318,10 @@
     if (!filtros.buses) return;
     var rutas = [];
     if (linea !== null) rutas = [linea];
+    else if (activo && activo.varios) activo.varios.forEach(function (op) { var t = primerBus(op); if (rutas.indexOf(t.ruta) < 0) rutas.push(t.ruta); });
     else if (activo) activo.tr.tramos.forEach(function (t) { if (t.tipo === 'bus' && rutas.indexOf(t.ruta) < 0 && rutas.length < 2) rutas.push(t.ruta); });
+    var tope = activo && activo.varios ? 3 : 5, subidas = [];
+    if (activo && linea === null) (activo.varios || [activo.tr]).forEach(function (op) { var t = primerBus(op); if (t) subidas.push(t); });
     if (!rutas.length) { tostada('Elige una ruta para ver sus buses en vivo.'); return; }
     var clave = rutas.join(',');
     if (primera && clave === flota.clave && Date.now() - flota.en < 110000) return;   // ya se esta siguiendo: no se gasta otra consulta
@@ -1293,6 +1336,14 @@
     }))).then(function (res) {
       if (flota.clave !== clave) return;
       var lista = res[0], ahoraMs = Date.now(), nuevos = {}, vels = [], n = 0;
+      // solo interesan los buses que aun no pasan por tu paradero de subida
+      flota.limite = {};
+      subidas.forEach(function (t) {
+        var m = metricaDe(lista, t.ruta);
+        if (m.forma.length < 2) return;
+        var pos = posDe(red.pat[t.pat], m.forma)[t.posSube], k = Math.min(m.acum.length - 2, Math.floor(pos));
+        flota.limite[t.ruta] = m.acum[k] + (m.acum[k + 1] - m.acum[k]) * (pos - k) + 150;
+      });
       res.slice(1).forEach(function (grupo) { grupo.forEach(function (x, i) {
         var id = x.r + ':' + (x.license_plate || x.vehicle_label || i), antes = flota.buses[id], m = metricaDe(lista, x.r), s0 = null;
         var v = base.rut.sis[x.r] === 0 ? 7 : 4.5;      // metros por segundo tipicos: troncal y zonal
@@ -1301,15 +1352,17 @@
           if (!cerca || cerca.d > 150) cerca = pegar(m, x.longitude, x.latitude, -1, Infinity);
           if (cerca && cerca.d < 300) s0 = cerca.s;
         }
+        // la lectura trae su hora: se descuenta lo que lleva de vieja
+        var leida = Date.parse(x.reported_at || ''), tBus = isNaN(leida) ? ahoraMs : ahoraMs - Math.max(0, Math.min(180000, ahora().getTime() - leida));
         if (antes) {
           v = antes.v;
-          var dt = (ahoraMs - antes.t) / 1000;
+          var dt = (tBus - antes.t) / 1000;
           if (s0 !== null && antes.s !== null && dt > 40) {
             var medida = (s0 - antes.s) / dt;
             if (medida >= 0 && medida < 22) { v = Math.max(0.5, medida); vels.push(medida * 3.6); }
           }
         }
-        nuevos[id] = { ruta: x.r, lon: x.longitude, lat: x.latitude, s: s0, v: v, t: ahoraMs, placa: x.license_plate || '', va: x.stop_name || '' };
+        nuevos[id] = { ruta: x.r, lon: x.longitude, lat: x.latitude, s: s0, v: v, t: tBus, placa: x.license_plate || '', va: x.stop_name || '' };
         n++;
       }); });
       flota.buses = nuevos; flota.cuenta++;
@@ -1326,7 +1379,7 @@
         tostada(n ? n + (n === 1 ? ' bus' : ' buses') + ' en el mapa. Se actualiza cada 2 minutos.' : 'No hay buses reportando en esta ruta ahora.');
         if (n && mapa && linea === null && !mapa.getPitch()) mapa.easeTo({ pitch: 50, duration: pocoMovimiento() ? 0 : 700 });
       }
-      if (flota.cuenta < 5) flota.reloj = setTimeout(function () { if (document.hidden) pararBuses(); else refrescarBuses(false); }, 120000);
+      if (flota.cuenta < tope) flota.reloj = setTimeout(function () { if (document.hidden) pararBuses(); else refrescarBuses(false); }, 120000);
       else { tostada('Buses en vivo en pausa para ahorrar créditos. Toca "Buses en vivo" para seguir.'); filtros.buses = false; pintarFiltros(); pararBuses(); }
     }).catch(function (e) {
       tostada(textoError(e));
@@ -1649,6 +1702,7 @@
       t.appendChild(h('div', { class: 'botones' },
         boton('Otras opciones', 'claro chico', function () { abrirRuta({ tipo: 'lugar', id: a.id }, { tipo: 'lugar', id: b.id }, { modo: v.rutina.modo, hora: v.rutina.hora, rutina: v.rutina.id, fecha: v.fecha, tipo: v.tipo }); }),
         boton('Alertas de la ruta', 'claro chico', function () { revisarAlertasViaje(v, false); }, 'alerta'),
+        boton('Buses que me sirven', 'claro chico', function () { verVarios(v.res.trayectos, a, b); }, 'vivo'),
         v.registrado ? null : boton('Tomé este bus', 'claro chico', function () { registrarViaje(v, plan); }, 'check')));
     }
     return t;
@@ -1751,6 +1805,7 @@
     }
     if (res.ampliado) c.appendChild(aviso('', 'cambiar', 'No hay ruta directa', 'Te muestro opciones con ' + res.ampliado + (res.ampliado === 1 ? ' transbordo' : ' transbordos') + '. El transbordo no se cobra.'));
     c.appendChild(h('div', { class: 'seccion', text: 'Las opciones más rápidas' }));
+    c.appendChild(h('div', { class: 'botones', style: 'margin:0 0 4px' }, boton('Buses que me sirven, en vivo', 'claro chico', function () { verVarios(res.trayectos, a, b); }, 'vivo')));
     res.trayectos.forEach(function (tr, i) {
       var elegida = i === Q.sel;
       var t = h('button', { type: 'button', class: 'tarjeta opcion', 'aria-pressed': String(elegida), onclick: function () { Q.sel = i; pintar(); dibujarTrayecto(tr, a, b); } },
@@ -2447,7 +2502,7 @@
     fijarAhora: function (iso) { desfase = iso ? new Date(iso).getTime() - Date.now() - reloj.corr : 0; planearViajes(true); pintar(); },
     cargar: function (datos) { E = normalizar(datos); pintarEntrada(); pintarLugares(); planearViajes(true); pintar(); },
     ubicar: function (lat, lon) { fijarUbicacion(lat, lon, 20, false); },
-    estado: function () { return { vista: vista, viajes: viajes.map(function (v) { return { estado: v.estado, sale: v.tr && v.tr.sale, llega: v.tr && v.tr.llega }; }), historial: E.historial.length, aprendizaje: Object.keys(E.aprendizaje).length, ubicacion: ubi.estado, buses: Object.keys(flota.buses).length, bus0: datosMapa.buses.features[0] ? datosMapa.buses.features[0].geometry.coordinates : null, cubos: datosMapa.buses3d.features.length, inclinacion: mapa ? Math.round(mapa.getPitch()) : null, cinta: datosMapa.cinta.features.length, saldo: E.saldo }; }
+    estado: function () { return { vista: vista, viajes: viajes.map(function (v) { return { estado: v.estado, sale: v.tr && v.tr.sale, llega: v.tr && v.tr.llega }; }), historial: E.historial.length, aprendizaje: Object.keys(E.aprendizaje).length, ubicacion: ubi.estado, buses: Object.keys(flota.buses).length, bus0: datosMapa.buses.features[0] ? datosMapa.buses.features[0].geometry.coordinates : null, cubos: datosMapa.buses3d.features.length, enMapa: datosMapa.buses.features.length, lineas: datosMapa.ruta.features.length, inclinacion: mapa ? Math.round(mapa.getPitch()) : null, cinta: datosMapa.cinta.features.length, saldo: E.saldo }; }
   };
 
   iniciar();
