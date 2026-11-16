@@ -468,8 +468,8 @@
           paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.9 } },
         circulo('buses-halo', 'buses', { filter: ['==', ['get', 'nivel'], 2], layout: visible(filtros.buses),
           paint: { 'circle-radius': z([10, 13, 15, 22]), 'circle-color': '#ffd60a', 'circle-opacity': 0.45 } }),
-        circulo('buses', 'buses', { paint: { 'circle-radius': ['interpolate', ['exponential', 1.5], ['zoom'], 10, ['match', ['get', 'nivel'], 2, 7, 0, 4, 5.5], 15, ['match', ['get', 'nivel'], 2, 12.5, 0, 7, 10]], 'circle-color': '#e8850c',
-          'circle-opacity': ['match', ['get', 'nivel'], 0, 0.45, 1], 'circle-stroke-color': c.blanco, 'circle-stroke-width': 2.4, 'circle-stroke-opacity': ['match', ['get', 'nivel'], 0, 0.45, 1] } }),
+        circulo('buses', 'buses', { paint: { 'circle-radius': ['interpolate', ['exponential', 1.5], ['zoom'], 10, ['match', ['get', 'nivel'], 2, 7, 0, 4, 5.5], 15, ['match', ['get', 'nivel'], 2, 12.5, 0, 7, 10]], 'circle-color': ['match', ['get', 'nivel'], 0, '#8e8e93', '#e8850c'],
+          'circle-opacity': ['match', ['get', 'nivel'], 0, 0.7, 1], 'circle-stroke-color': c.blanco, 'circle-stroke-width': 2.4, 'circle-stroke-opacity': ['match', ['get', 'nivel'], 0, 0.7, 1] } }),
         { id: 'buses-texto', type: 'symbol', source: 'buses', minzoom: 11,
           layout: { 'text-field': ['get', 'etq'], 'text-font': ['Noto Sans Bold'], 'text-size': ['match', ['get', 'nivel'], 2, 13, 11], 'text-offset': [0, -1.6], 'text-anchor': 'bottom', 'text-allow-overlap': true },
           paint: { 'text-color': c.lugar, 'text-halo-color': c.halo, 'text-halo-width': 2 } }
@@ -1305,6 +1305,7 @@
     clearTimeout(flota.reloj); clearInterval(flota.anim);
     flota = { clave: '', rutas: [], buses: {}, reloj: null, anim: null, cuenta: 0, en: 0 };
     datosMapa.buses = datosMapa.buses3d = datosMapa.trayectorias = VACIO; ponerDatos(['buses', 'buses3d', 'trayectorias']);
+    leyenda(false);
     if (mapa && mapa.getLayer('ruta-brillo')) mapa.setPaintProperty('ruta-brillo', 'line-opacity', 0);
   }
   /* Dibuja cada bus donde deberia ir ahora (ultima lectura + velocidad x tiempo, maximo 2,5 minutos) */
@@ -1315,6 +1316,15 @@
     return salida;
   }
   var latido = 0;
+  function leyenda(si) {
+    var e = $('leyenda-buses');
+    if (!e) {
+      e = h('div', { id: 'leyenda-buses', class: 'leyenda', 'aria-hidden': 'true' },
+        h('span', {}, h('i', { style: 'background:#ffb000' }), 'Vienen cerca'), h('span', {}, h('i', { style: 'background:#e8850c' }), 'Vienen detrás'), h('span', {}, h('i', { style: 'background:#8e8e93' }), 'Ya pasaron'));
+      $('app').appendChild(e);
+    }
+    e.hidden = !si;
+  }
   /* Dibuja cada bus donde deberia ir ahora (ultima lectura + velocidad x tiempo, maximo 2,5 minutos).
    * Los 3 que vienen mas cerca de tu paradero se resaltan, con sus minutos y su trayectoria. */
   function moverBuses() {
@@ -1322,24 +1332,27 @@
     var ahoraMs = Date.now(), lista = [], en3d = mapa && mapa.getPitch() > 5, hayLimite = false;
     Object.keys(flota.buses).forEach(function (id) {
       var b = flota.buses[id], c = [b.lon, b.lat], m = metricas[b.ruta], lim = flota.limite ? flota.limite[b.ruta] : undefined, sAhora = null, falta = null;
-      if (lim !== undefined && b.s !== null && b.s > lim) return;
+      var pasado = lim !== undefined && b.s !== null && b.s > lim;
       if (m && b.s !== null) { sAhora = b.s + b.v * Math.min(150, (ahoraMs - b.t) / 1000); c = puntoEnMetros(m, sAhora); }
-      if (lim !== undefined && sAhora !== null) { hayLimite = true; falta = Math.max(0, lim - 150 - sAhora); }
-      lista.push({ b: b, c: c, m: m, s: sAhora, falta: falta, fin: lim === undefined ? null : lim - 150 });
+      if (lim !== undefined && sAhora !== null) { hayLimite = true; falta = pasado ? null : Math.max(0, lim - 150 - sAhora); }
+      lista.push({ b: b, c: c, m: m, s: sAhora, falta: falta, pasado: pasado, fin: lim === undefined ? null : lim - 150 });
     });
     var cercanos = lista.filter(function (x) { return x.falta !== null; }).sort(function (x, y) { return x.falta - y.falta; }).slice(0, 3);
     var puntos = [], cubos = [], trayectorias = [];
+    leyenda(hayLimite);
     lista.forEach(function (x) {
-      var cerca = cercanos.indexOf(x) >= 0, nivel = !hayLimite ? 1 : (cerca ? 2 : 0), cod = base.rut.cod[x.b.ruta], etq = cod;
-      if (cerca) {
+      // 2: los 3 que vienen mas cerca; 1: vienen detras; 0: ya pasaron tu paradero
+      var cerca = cercanos.indexOf(x) >= 0, nivel = x.pasado ? 0 : (cerca ? 2 : 1), cod = base.rut.cod[x.b.ruta], etq = cod;
+      if (x.pasado) etq = cod + ' · ya pasó';
+      else if (x.falta !== null) {
         var min = Math.round(x.falta / Math.max(1.5, x.b.v) / 60);
         etq = cod + (min <= 0 ? ' · llegando' : ' · a ' + min + ' min');
-        if (x.falta > 30) trayectorias.push(trazo(tramoMetros(x.m, x.s, x.fin), {}));
+        if (cerca && x.falta > 30) trayectorias.push(trazo(tramoMetros(x.m, x.s, x.fin), {}));
       }
       puntos.push(punto(x.c, { cod: cod, etq: etq, nivel: nivel, placa: x.b.placa }));
-      if (en3d && nivel) {
+      if (en3d) {
         var lado = cerca ? 60 : 45, dx = lado / (Math.cos(x.c[1] * Math.PI / 180) * 111320), dy = lado / 110574;
-        cubos.push({ type: 'Feature', properties: { h: cerca ? 260 : 130, color: cerca ? '#ffb000' : '#e8850c' },
+        cubos.push({ type: 'Feature', properties: { h: cerca ? 260 : (nivel === 0 ? 60 : 130), color: cerca ? '#ffb000' : (nivel === 0 ? '#8e8e93' : '#e8850c') },
           geometry: { type: 'Polygon', coordinates: [[[x.c[0] - dx, x.c[1] - dy], [x.c[0] + dx, x.c[1] - dy], [x.c[0] + dx, x.c[1] + dy], [x.c[0] - dx, x.c[1] + dy], [x.c[0] - dx, x.c[1] - dy]]] } });
       }
     });
