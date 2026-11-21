@@ -6,8 +6,12 @@ Fuente: teselas vectoriales de OpenFreeMap (esquema OpenMapTiles, datos de OpenS
 El visor de la app no puede pedir mapas a otros sitios, por eso cada tesela se guarda
 junto a la app como un archivo JSON con el contenido comprimido (gzip) en base64.
 
-Para que pesen poco se quitan capas y atributos que la app no dibuja (edificios,
-numeros de puerta, puntos de interes, traducciones de nombres, senderos).
+Para que pesen poco se quitan capas y atributos que la app no dibuja (numeros de puerta,
+puntos de interes, traducciones de nombres, senderos). Los edificios se conservan solo en z14
+con su altura, para dibujarlos en volumen.
+
+Relieve: teselas Terrarium de AWS Terrain Tiles (z9-12) guardadas como PNG en base64
+(mapa/r/), para que la vista inclinada muestre los cerros.
 """
 import base64
 import gzip
@@ -59,7 +63,10 @@ REGLAS = {
     "transportation_name": (lambda z, p: bool(p.get("name")) and (z >= 13 or p.get("class") != "minor"), ["name", "class", "ref"]),
     "place": (lambda z, p: p.get("class") in LUGARES and bool(p.get("name")), ["name", "class", "rank"]),
     "aerodrome_label": (lambda z, p: bool(p.get("name")), ["name", "iata"]),
+    "building": (lambda z, p: z >= 14, ["render_height", "render_min_height"]),
 }
+RELIEVE = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+ZRELIEVE = range(9, 13)
 
 
 def tesela_de(lon, lat, z):
@@ -212,6 +219,30 @@ def main():
         print(f"z{z}: {n} teselas, {total / 1024:.0f} KB, media {total / n / 1024:.0f} KB, mayor {mayor / 1024:.0f} KB")
     print(f"crudo {crudo_total / 1e6:.1f} MB -> fino {fino_total / 1e6:.1f} MB -> empaquetado {empaquetado_total / 1e6:.1f} MB")
 
+    # relieve: PNG Terrarium (ya comprimidos), en base64 sin gzip
+    os.makedirs(os.path.join(mapa, "r"), exist_ok=True)
+    indice_relieve, relieve_total = {}, 0
+    for z in ZRELIEVE:
+        x0, y1 = tesela_de(CAJA[0], CAJA[1], z)
+        x1, y0 = tesela_de(CAJA[2], CAJA[3], z)
+        for x in range(x0, x1 + 1):
+            for y in range(y0, y1 + 1):
+                ruta = os.path.join(crudas, f"r-{z}-{x}-{y}.png")
+                if not os.path.exists(ruta):
+                    try:
+                        with open(ruta, "wb") as f:
+                            f.write(bajar(RELIEVE.format(z=z, x=x, y=y)))
+                    except Exception as e:
+                        print("sin relieve", z, x, y, e)
+                        continue
+                with open(ruta, "rb") as f:
+                    texto = base64.b64encode(f.read()).decode("ascii")
+                with open(os.path.join(mapa, "r", f"{z}-{x}-{y}.json"), "w", encoding="ascii") as f:
+                    json.dump(texto, f)
+                indice_relieve.setdefault(str(z), []).append(f"{x}-{y}")
+                relieve_total += len(texto)
+    print("relieve", {z: len(v) for z, v in indice_relieve.items()}, f"{relieve_total / 1e6:.1f} MB")
+
     letras = {}
     for nombre in LETRAS:
         for rango in RANGOS:
@@ -222,7 +253,7 @@ def main():
     with open(os.path.join(mapa, "letras.json"), "w", encoding="ascii") as f:
         json.dump(letras, f, separators=(",", ":"))
     with open(os.path.join(mapa, "indice.json"), "w", encoding="ascii") as f:
-        json.dump({"zmin": ZMIN, "zmax": ZMAX, "caja": CAJA, "t": indice,
+        json.dump({"zmin": ZMIN, "zmax": ZMAX, "caja": CAJA, "t": indice, "r": indice_relieve,
                    "atribucion": "© OpenStreetMap, OpenMapTiles, OpenFreeMap"}, f, separators=(",", ":"))
     print("letras", {k: len(v) // 1024 for k, v in letras.items()}, "KB")
 

@@ -325,6 +325,14 @@
         return leerJson('mapa/t/' + m[1] + '-' + m[2] + '-' + m[3] + '.json');
       }).then(function (texto) { return inflar(aBytes(texto)); }).then(function (datos) { return { data: datos }; });
     }
+    m = /^at:\/\/r\/(\d+)\/(\d+)\/(\d+)/.exec(pedido.url);
+    if (m) {   // relieve: PNG Terrarium guardado en base64
+      return teselas.then(function (ind) {
+        var lista = ind.r && ind.r[m[1]];
+        if (!lista || lista.indexOf(m[2] + '-' + m[3]) < 0) throw new Error('sin relieve');
+        return leerJson('mapa/r/' + m[1] + '-' + m[2] + '-' + m[3] + '.json');
+      }).then(function (texto) { return { data: aBytes(texto).buffer }; });
+    }
     m = /^at:\/\/letras\/([^/]+)\/([\d-]+)/.exec(pedido.url);
     if (m) {
       return letras.then(function (todas) {
@@ -340,6 +348,34 @@
     if (t === 'dark') return true;
     if (t === 'light') return false;
     return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  /* ---------- luz real: el cielo sigue al sol sobre Bogota (idea del Ojo de Dios) ---------- */
+
+  function elevacionSol(fecha) {
+    var R = Math.PI / 180, d = fecha.getTime() / 86400000 - 10957.5;      // dias desde J2000
+    var g = (357.529 + 0.98560028 * d) * R, q = 280.459 + 0.98564736 * d;
+    var L = (q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * R, e = (23.439 - 0.00000036 * d) * R;
+    var dec = Math.asin(Math.sin(e) * Math.sin(L)), ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+    var gmst = ((18.697374558 + 24.06570982441908 * d) % 24 + 24) % 24, ha = (gmst * 15 - 74.08) * R - ra, lat = 4.65 * R;
+    return Math.asin(Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(ha)) / R;
+  }
+  function mezclar(a, b, t) {
+    t = Math.max(0, Math.min(1, t));
+    var x = [1, 3, 5].map(function (i) { return parseInt(a.substr(i, 2), 16); }), y = [1, 3, 5].map(function (i) { return parseInt(b.substr(i, 2), 16); });
+    return '#' + x.map(function (v, i) { return ('0' + Math.round(v + (y[i] - v) * t).toString(16)).slice(-2); }).join('');
+  }
+  function cielo(oscuro) {
+    var t = ahora(), elev = elevacionSol(t), subiendo = elevacionSol(new Date(t.getTime() + 600000)) > elev;
+    var dia = oscuro ? { s: '#1b2740', h: '#2c3550', f: '#17171a' } : { s: '#8fbde8', h: '#e8f0f8', f: '#f3f2ee' };
+    var noche = { s: '#03050b', h: '#0b1424', f: oscuro ? '#0b0d12' : '#1a1d26' };
+    var oro = subiendo ? { s: '#2a3b5c', h: '#ffb36b', f: '#3a3340' } : { s: '#2b2a4a', h: '#ff7a45', f: '#3b2b35' };
+    var c;
+    if (elev <= -8) c = noche;
+    else if (elev < 0) c = { s: mezclar(noche.s, oro.s, (elev + 8) / 8), h: mezclar(noche.h, oro.h, (elev + 8) / 8), f: mezclar(noche.f, oro.f, (elev + 8) / 8) };
+    else if (elev < 12) c = { s: mezclar(oro.s, dia.s, elev / 12), h: mezclar(oro.h, dia.h, elev / 12), f: mezclar(oro.f, dia.f, elev / 12) };
+    else c = dia;
+    return { 'sky-color': c.s, 'horizon-color': c.h, 'fog-color': c.f, 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.25, 'atmosphere-blend': 0.6 };
   }
 
   function estilo(oscuro) {
@@ -382,9 +418,12 @@
     return {
       version: 8,
       glyphs: 'at://letras/{fontstack}/{range}',
+      sky: cielo(oscuro),
       sources: {
         base: { type: 'vector', tiles: ['at://t/{z}/{x}/{y}'], minzoom: 9, maxzoom: 14 },
-        paraderos: geo('paraderos'), estaciones: geo('estaciones'), rutaCompleta: geo('rutaCompleta'), ruta: geo('ruta'),
+        relieve: { type: 'raster-dem', tiles: ['at://r/{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 256, minzoom: 9, maxzoom: 12 },
+        // paraderos agrupados en burbujas al alejar el mapa
+        paraderos: { type: 'geojson', data: datosMapa.paraderos, cluster: true, clusterMaxZoom: 13, clusterRadius: 42 }, estaciones: geo('estaciones'), rutaCompleta: geo('rutaCompleta'), ruta: geo('ruta'),
         rutaParadas: geo('rutaParadas'), buses: geo('buses'), toque: geo('toque'), cinta: geo('cinta'), buses3d: geo('buses3d'), trayectorias: geo('trayectorias')
       },
       layers: [
@@ -393,6 +432,9 @@
         { id: 'reserva', type: 'fill', source: 'base', 'source-layer': 'park', paint: { 'fill-color': c.bosque, 'fill-opacity': 0.7 } },
         { id: 'bosque', type: 'fill', source: 'base', 'source-layer': 'landcover', filter: clase(['wood']), paint: { 'fill-color': c.bosque } },
         { id: 'pasto', type: 'fill', source: 'base', 'source-layer': 'landcover', filter: clase(['grass', 'wetland']), paint: { 'fill-color': c.verde } },
+        // sombras del relieve: los cerros orientales se ven en volumen
+        { id: 'sombras', type: 'hillshade', source: 'relieve', paint: { 'hillshade-exaggeration': oscuro ? 0.45 : 0.32,
+          'hillshade-shadow-color': oscuro ? '#000000' : '#6b6b78', 'hillshade-highlight-color': oscuro ? '#2a2a30' : '#ffffff', 'hillshade-accent-color': oscuro ? '#101014' : '#8a8a96' } },
         { id: 'agua', type: 'fill', source: 'base', 'source-layer': 'water', paint: { 'fill-color': c.agua } },
         { id: 'rios', type: 'line', source: 'base', 'source-layer': 'waterway', paint: { 'line-color': c.agua, 'line-width': z([11, 1, 16, 4]) } },
         { id: 'aeropuerto', type: 'fill', source: 'base', 'source-layer': 'aeroway', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': c.pista } },
@@ -410,6 +452,10 @@
         { id: 'tren', type: 'line', source: 'base', 'source-layer': 'transportation', minzoom: 12, filter: clase(['rail', 'transit']),
           paint: { 'line-color': c.tren, 'line-width': 1.2, 'line-dasharray': [3, 2] } },
 
+        // edificios en volumen al acercarse
+        { id: 'edificios', type: 'fill-extrusion', source: 'base', 'source-layer': 'building', minzoom: 14.5,
+          paint: { 'fill-extrusion-color': oscuro ? '#2a2a30' : '#dcdad3', 'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8],
+                   'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.5, 0.8] } },
         { id: 'ruta-completa', type: 'line', source: 'rutaCompleta', layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': ['get', 'color'], 'line-width': z([10, 2, 16, 4]), 'line-opacity': 0.32 } },
         // el borde de la ruta toma el color del trafico (verde, naranja o rojo), como en Waze
@@ -438,6 +484,11 @@
         texto('ciudades', 'place', { maxzoom: 12.2, filter: clase(['city', 'town', 'village']),
           layout: { 'text-font': ['Noto Sans Bold'], 'text-size': ['match', ['get', 'class'], 'city', 17, 'town', 13.5, 11.5] }, paint: { 'text-color': c.lugar } }),
 
+        circulo('par-burbujas', 'paraderos', { minzoom: 11.5, maxzoom: 14.3, filter: ['has', 'point_count'], layout: visible(filtros.paraderos),
+          paint: { 'circle-radius': ['step', ['get', 'point_count'], 11, 20, 14, 60, 18], 'circle-color': c.blanco, 'circle-stroke-color': '#1763c6', 'circle-stroke-width': 2, 'circle-opacity': 0.92 } }),
+        { id: 'par-burbujas-n', type: 'symbol', source: 'paraderos', minzoom: 11.5, maxzoom: 14.3, filter: ['has', 'point_count'],
+          layout: { visibility: filtros.paraderos ? 'visible' : 'none', 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-allow-overlap': true },
+          paint: { 'text-color': '#1763c6' } },
         circulo('par-zonal', 'paraderos', { minzoom: 14.3, filter: ['==', ['get', 'k'], 'z'], layout: visible(filtros.paraderos),
           paint: { 'circle-radius': z([14.3, 2.6, 17, 6]), 'circle-color': c.blanco, 'circle-stroke-color': '#1763c6', 'circle-stroke-width': z([14.3, 1.4, 17, 2.4]) } }),
         circulo('par-alim', 'paraderos', { minzoom: 14.3, filter: ['==', ['get', 'k'], 'a'], layout: visible(filtros.paraderos),
@@ -495,12 +546,35 @@
       else if (linea !== null && lineaInfo) dibujarLinea(linea, lineaInfo.sinServicio ? null : lineaInfo);
     });
     mapa.on('click', alTocarMapa);
+    // relieve 3D solo en vista inclinada (en 2D no se nota y cuesta)
+    var conTerreno = false;
+    function revisarTerreno() {
+      var quiere = mapa.getPitch() > 8;
+      if (quiere === conTerreno || !mapa.getSource('relieve')) return;
+      conTerreno = quiere;
+      try { mapa.setTerrain(quiere ? { source: 'relieve', exaggeration: 1.25 } : null); } catch (e) { conTerreno = false; }
+    }
+    // fluidez: las animaciones se pausan mientras se mueve el mapa y se dibuja con menos pixeles
+    var nitido = Math.min(window.devicePixelRatio || 1, 2), fluido = Math.min(nitido, esAncho() ? 1.5 : 1.25), esperaNitidez = 0, propio = false;
+    function ponerNitidez(r) { if (!mapa.setPixelRatio || Math.abs(mapa.getPixelRatio() - r) < 0.01) return; propio = true; mapa.setPixelRatio(r); propio = false; }
+    mapa.on('movestart', function () { if (propio) return; moviendoMapa = true; clearTimeout(esperaNitidez); if (nitido !== fluido) ponerNitidez(fluido); });
+    mapa.on('moveend', function () {
+      if (propio) return;
+      moviendoMapa = false; revisarTerreno();
+      clearTimeout(esperaNitidez);
+      if (nitido !== fluido) esperaNitidez = setTimeout(function () { if (!moviendoMapa) ponerNitidez(nitido); }, 250);
+    });
+    mapa.on('styledata', function () { if (conTerreno && !mapa.getTerrain()) { conTerreno = false; revisarTerreno(); } });
+    // el cielo cambia con la hora del dia
+    setInterval(function () { if (mapa.setSky && mapaListo) mapa.setSky(cielo(temaOscuro())); }, 5 * 60000);
     var oscuroAntes = temaOscuro();
     function revisarTema() {
       var o = temaOscuro();
       if (o === oscuroAntes) return;
       oscuroAntes = o;
+      conTerreno = false;
       mapa.setStyle(estilo(o));
+      mapa.once('styledata', revisarTerreno);
     }
     new MutationObserver(revisarTema).observe(raiz, { attributes: true, attributeFilter: ['data-theme'] });
     if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', revisarTema);
@@ -768,6 +842,8 @@
       return;
     }
     var caja = [[e.point.x - 9, e.point.y - 9], [e.point.x + 9, e.point.y + 9]];
+    var burbuja = mapa.getLayer('par-burbujas') ? mapa.queryRenderedFeatures(caja, { layers: ['par-burbujas'] })[0] : null;
+    if (burbuja) { mapa.easeTo({ center: burbuja.geometry.coordinates, zoom: Math.min(14.6, mapa.getZoom() + 2), duration: pocoMovimiento() ? 0 : 500 }); return; }
     var capas = ['buses', 'ruta-extremos', 'ruta-paradas', 'recargas', 'estaciones', 'par-zonal', 'par-alim'].filter(function (id) { return mapa.getLayer(id); });
     var hallados = mapa.queryRenderedFeatures(caja, { layers: capas });
     if (hallados.length) {
@@ -1315,7 +1391,7 @@
     salida.push(puntoEnMetros(m, s2));
     return salida;
   }
-  var latido = 0;
+  var latido = 0, moviendoMapa = false;
   function leyenda(si) {
     var e = $('leyenda-buses');
     if (!e) {
@@ -1328,7 +1404,7 @@
   /* Dibuja cada bus donde deberia ir ahora (ultima lectura + velocidad x tiempo, maximo 2,5 minutos).
    * Los 3 que vienen mas cerca de tu paradero se resaltan, con sus minutos y su trayectoria. */
   function moverBuses() {
-    if (!flota.clave || document.hidden) return;
+    if (!flota.clave || document.hidden || moviendoMapa) return;
     var ahoraMs = Date.now(), lista = [], en3d = mapa && mapa.getPitch() > 5, hayLimite = false;
     Object.keys(flota.buses).forEach(function (id) {
       var b = flota.buses[id], c = [b.lon, b.lat], m = metricas[b.ruta], lim = flota.limite ? flota.limite[b.ruta] : undefined, sAhora = null, falta = null;
@@ -1452,7 +1528,7 @@
     });
     if (!mapa || !mapaListo) return;
     var ver = function (id, si) { if (mapa.getLayer(id)) mapa.setLayoutProperty(id, 'visibility', si ? 'visible' : 'none'); };
-    ver('par-zonal', filtros.paraderos); ver('par-alim', filtros.paraderos);
+    ver('par-zonal', filtros.paraderos); ver('par-alim', filtros.paraderos); ver('par-burbujas', filtros.paraderos); ver('par-burbujas-n', filtros.paraderos);
     ver('estaciones', filtros.estaciones); ver('recargas', filtros.recargas); ver('recargas-signo', filtros.recargas);
     ver('buses', filtros.buses); ver('buses-texto', filtros.buses); ver('buses-3d', filtros.buses); ver('buses-halo', filtros.buses);
   }
@@ -2561,10 +2637,10 @@
 
   // solo para pruebas: mover el reloj y cargar datos de ejemplo sin tocar la base
   window.ATiempo = {
-    fijarAhora: function (iso) { desfase = iso ? new Date(iso).getTime() - Date.now() - reloj.corr : 0; planearViajes(true); pintar(); },
+    fijarAhora: function (iso) { desfase = iso ? new Date(iso).getTime() - Date.now() - reloj.corr : 0; planearViajes(true); pintar(); if (mapa && mapa.setSky && mapaListo) mapa.setSky(cielo(temaOscuro())); },
     cargar: function (datos) { E = normalizar(datos); pintarEntrada(); pintarLugares(); planearViajes(true); pintar(); },
     ubicar: function (lat, lon) { fijarUbicacion(lat, lon, 20, false); },
-    estado: function () { return { vista: vista, viajes: viajes.map(function (v) { return { estado: v.estado, sale: v.tr && v.tr.sale, llega: v.tr && v.tr.llega }; }), historial: E.historial.length, aprendizaje: Object.keys(E.aprendizaje).length, ubicacion: ubi.estado, buses: Object.keys(flota.buses).length, bus0: datosMapa.buses.features[0] ? datosMapa.buses.features[0].geometry.coordinates : null, cubos: datosMapa.buses3d.features.length, enMapa: datosMapa.buses.features.length, etiquetas: datosMapa.buses.features.map(function (f) { return f.properties.etq + '/' + f.properties.nivel; }), trayectorias: datosMapa.trayectorias.features.length, lineas: datosMapa.ruta.features.length, inclinacion: mapa ? Math.round(mapa.getPitch()) : null, cinta: datosMapa.cinta.features.length, saldo: E.saldo }; }
+    estado: function () { return { vista: vista, viajes: viajes.map(function (v) { return { estado: v.estado, sale: v.tr && v.tr.sale, llega: v.tr && v.tr.llega }; }), historial: E.historial.length, aprendizaje: Object.keys(E.aprendizaje).length, ubicacion: ubi.estado, buses: Object.keys(flota.buses).length, bus0: datosMapa.buses.features[0] ? datosMapa.buses.features[0].geometry.coordinates : null, cubos: datosMapa.buses3d.features.length, enMapa: datosMapa.buses.features.length, terreno: !!(mapa && mapa.getTerrain && mapa.getTerrain()), cielo: mapa && mapa.getSky ? (mapa.getSky() || {})['horizon-color'] : null, sol: Math.round(elevacionSol(ahora())), etiquetas: datosMapa.buses.features.map(function (f) { return f.properties.etq + '/' + f.properties.nivel; }), trayectorias: datosMapa.trayectorias.features.length, lineas: datosMapa.ruta.features.length, inclinacion: mapa ? Math.round(mapa.getPitch()) : null, cinta: datosMapa.cinta.features.length, saldo: E.saldo }; }
   };
 
   iniciar();
