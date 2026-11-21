@@ -187,4 +187,16 @@ prueba('resumen de una ruta: sentidos, salidas y minutos acumulados', () => {
     ', ultima ' + reloj(s.ultima) + ', cada ' + (s.cada ? Math.round(s.cada / 60) + ' min' : '?'));
 });
 
+prueba('bus perdido: compara quedarse y caminar sin volver a ofrecer el viaje perdido', () => {
+  const consulta = { desde: PORTAL_NORTE, hasta: MUSEO_NACIONAL, modo: 'salir', t: hora(17), tipo: 'habil' };
+  const perdido = P.planear(red, consulta).trayectos[0].tramos.find(t => t.tipo === 'bus');
+  const desde = { lat: red.lat[perdido.sube], lon: red.lon[perdido.sube] };
+  const { trayectos } = P.planear(red, { ...consulta, desde, t: perdido.sale - 180, perdido });
+  assert.strictEqual(trayectos.length, 2);
+  const buses = trayectos.map(tr => tr.tramos.find(t => t.tipo === 'bus'));
+  assert(buses.some(t => t.sube === perdido.sube));
+  assert(buses.some(t => t.sube !== perdido.sube));
+  assert(buses.every(t => t.pat !== perdido.pat || t.ini !== perdido.ini));
+});
+
 console.log(pruebas + ' pruebas pasaron');

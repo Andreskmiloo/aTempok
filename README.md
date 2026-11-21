@@ -23,6 +23,10 @@ App para moverse en SITP y TransMilenio en Bogotá:
 - Paraderos agrupados en burbujas al alejar el mapa; botón 2D/3D y vuelo de entrada a tu ubicación.
 - Abrir el tramo a pie o la ruta en Waze.
 - Atajos de teclado: J Jarvis, V en vivo, R rutas, Esc volver.
+- Voy en camino: guía paso a paso del viaje, avisa antes de bajarse (vibra si el teléfono lo permite).
+- Ya perdí este bus: compara esperar el siguiente en el mismo paradero o caminar a otro, sin volver a ofrecer el bus perdido.
+- Saldo para ida y vuelta, y la taquilla con menos desvío para recargar.
+- En el mapa se distingue la última señal real del bus de su posición estimada.
 
 La app es una página que se publica como artifact privado de Claude. No lleva llaves ni datos personales:
 los lugares y rutinas de cada persona se guardan en su espacio privado de la base del artifact y en su navegador.
