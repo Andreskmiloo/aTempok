@@ -329,6 +329,13 @@
             var listo = antes[s] + (previas[s].desde === -1 ? op.colchon : op.colchonTransbordo);
             if (!viaje || listo <= pasa) {
               var cand = salidaEn(red, tipo, p, pos, listo);
+              if (cand && op.perdido && ip === op.perdido.pat) {
+                var perdido = op.perdido, frecuencia = (red.viajes[tipo][ip].frec || []).find(function (w) {
+                  return perdido.ini >= w[0] && perdido.ini <= w[1] && perdido.dur === w[3];
+                });
+                var siguiente = pasoPor(p, pos, perdido.ini, perdido.dur) + (frecuencia ? frecuencia[2] : 1);
+                if (cand.sale < siguiente) cand = salidaEn(red, tipo, p, pos, siguiente);
+              }
               if (cand && (!viaje || cand.sale < pasa)) { viaje = cand; posSube = pos; tSube = cand.sale; }
             }
           }
@@ -438,6 +445,7 @@
       transbordos: consulta.transbordos == null ? 1 : consulta.transbordos,
       colchon: consulta.colchon == null ? 180 : consulta.colchon,   // segundos de espera en el primer paradero
       colchonTransbordo: 90,
+      perdido: consulta.perdido || null,
       vetados: null
     };
   }
@@ -511,6 +519,17 @@
         });
       });
       lista = Array.from(vistos.values());
+    } else if (op.perdido) {
+      var actual = op.perdido.sube, mismo = new Map(), otros = new Map(accesos);
+      if (accesos.has(actual)) mismo.set(actual, accesos.get(actual));
+      otros.delete(actual);
+      [mismo, otros].forEach(function (grupo) {
+        if (!grupo.size) return;
+        var opciones = trayectosDesde(red, tipo, grupo, egresos, consulta, op, consulta.t, cuantas)
+          .filter(function (tr) { return tr.llega - consulta.t < 5 * 3600; })
+          .sort(function (a, b) { return a.llega - b.llega; });
+        if (opciones.length) lista.push(opciones[0]);
+      });
     } else {
       lista = trayectosDesde(red, tipo, accesos, egresos, consulta, op, consulta.t, cuantas)
         .filter(function (tr) { return tr.llega - consulta.t < 5 * 3600; });
@@ -523,6 +542,7 @@
     var porRutas = new Map();
     lista.forEach(function (tr) {
       var clave = tr.tramos.filter(function (x) { return x.tipo === 'bus'; }).map(function (x) { return x.ruta; }).join('|');
+      if (op.perdido) clave += ':' + tr.tramos.find(function (x) { return x.tipo === 'bus'; }).sube;
       if (!porRutas.has(clave)) porRutas.set(clave, tr);
     });
     lista = Array.from(porRutas.values()).slice(0, cuantas + 1);

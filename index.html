@@ -1,3 +1,7 @@
+<!doctype html>
+<html lang="es-CO">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>A Tiempo</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
@@ -341,6 +345,40 @@ select.entrada { appearance: none; -webkit-appearance: none; }
   #panel, #controles, #atribucion { transition: none; }
   *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .yo-halo { display: none; }
+}
+/* La línea turquesa identifica acciones de viaje sin sustituir los colores de los sistemas. */
+:root { --accion:#00695d; --tinta-accion:#fff; --borde-viaje:color-mix(in srgb,var(--accion) 35%,var(--linea)); }
+:root[data-theme="dark"] { --accion:#87dfc8; --tinta-accion:#092c27; }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) { --accion:#87dfc8; --tinta-accion:#092c27; }
+}
+#inicio { background:radial-gradient(ellipse at 75% 0%,#165b50,transparent 55%),#102c2c; }
+.inicio-arriba h1 { font-size:clamp(48px,8vw,76px); letter-spacing:-.06em; }
+.inicio-arriba .logo { width:58px; height:58px; }
+.ventajas svg.i { color:#86e7c7; }
+.boton.principal, .filtro[aria-pressed="true"] { background:var(--accion); color:var(--tinta-accion); }
+#pestanas button[aria-current="page"] { color:var(--accion); box-shadow:inset 0 3px var(--accion); }
+.destino-hero,.guia-viaje { position:relative; isolation:isolate; overflow:hidden; color:#fff; background:#103e39; border-radius:20px; padding:22px; }
+.destino-hero::after,.guia-viaje::after { content:""; position:absolute; z-index:-1; height:65px; width:180px; right:-72px; top:-25px; border:7px solid #76cfb6; border-radius:50px; transform:rotate(-40deg); opacity:.5; box-shadow:0 0 0 7px #103e39,0 0 0 10px #d0b46c; }
+.destino-hero .destino-titulo { font-size:clamp(29px,7vw,38px); letter-spacing:-.045em; }
+.destino-hero .a-donde { font-size:15px; border-radius:12px; height:48px; color:#123e39; background:#f4fcf8; }
+.guia-viaje h3 { font-size:clamp(27px,7vw,40px); line-height:1.05; margin:14px 0 5px; letter-spacing:-.04em; }
+.guia-viaje p { margin:5px 0 14px; font-weight:600; }
+.guia-viaje small { color:#c0e6dc; }
+.rutina-viaje,.opcion { border:1px solid var(--linea); border-radius:18px; padding:16px; }
+.rutina-viaje .grande { margin:10px 0; letter-spacing:-.045em; }
+.opcion[aria-pressed="true"] { border-color:var(--accion); box-shadow:inset 3px 0 var(--accion); }
+.metricas { display:grid; grid-template-columns:1.3fr 1fr 1fr; margin:12px 0; border-block:1px solid var(--linea); padding:10px 0; }
+.metricas span { display:grid; gap:4px; }
+.metricas small { font-size:12px; color:var(--texto2); }
+.metricas b { font-size:15px; font-variant-numeric:tabular-nums; }
+.detalle-opcion { padding:0 6px 14px; }
+.saldo-viaje { margin:14px 0; border:1px solid var(--borde-viaje); border-radius:12px; padding:12px; background:color-mix(in srgb,var(--accion) 5%,var(--superficie)); }
+.saldo-viaje .mini { margin:4px 0; }
+.saldo-viaje .boton { margin-top:5px; }
+@media (min-width:900px) {
+  #inicio { display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:7vw; padding:8vw; }
+  .inicio-abajo { border-radius:24px; padding:32px; }
 }
 </style>
 

@@ -37,7 +37,7 @@
   var activo = null;                             // trayecto dibujado { tr, desde, hasta }
   var linea = null;                              // ruta completa mostrada desde el buscador
   var mapa = null, mapaListo = false, marcadores = [], marcaPunto = null;
-  var datosMapa = { paraderos: VACIO, estaciones: VACIO, ruta: VACIO, rutaCompleta: VACIO, rutaParadas: VACIO, buses: VACIO, toque: VACIO, cinta: VACIO, buses3d: VACIO, trayectorias: VACIO };
+  var datosMapa = { paraderos: VACIO, estaciones: VACIO, ruta: VACIO, rutaCompleta: VACIO, rutaParadas: VACIO, reportes: VACIO, buses: VACIO, toque: VACIO, cinta: VACIO, buses3d: VACIO, trayectorias: VACIO };
   var indice = [];                               // textos para el buscador
   var panelEstado = 'medio';
   var desfase = 0;                               // solo para pruebas: corre el reloj
@@ -55,6 +55,7 @@
   var lineaInfo = null, lineaSel = null, plano = false;   // ruta vista completa
   var perfiles = {};                             // trafico por hora de cada rutina (para "Lo que he aprendido")
   var rutasFiltro = { texto: '', sis: -1 };
+  var guia = null;
   var destinoVisto = false;                      // la pantalla "A donde vas?" se abre una vez por sesion
 
   /* ---------- utilidades ---------- */
@@ -424,7 +425,7 @@
         relieve: { type: 'raster-dem', tiles: ['at://r/{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 256, minzoom: 9, maxzoom: 12 },
         // paraderos agrupados en burbujas al alejar el mapa
         paraderos: { type: 'geojson', data: datosMapa.paraderos, cluster: true, clusterMaxZoom: 13, clusterRadius: 42 }, estaciones: geo('estaciones'), rutaCompleta: geo('rutaCompleta'), ruta: geo('ruta'),
-        rutaParadas: geo('rutaParadas'), buses: geo('buses'), toque: geo('toque'), cinta: geo('cinta'), buses3d: geo('buses3d'), trayectorias: geo('trayectorias')
+        rutaParadas: geo('rutaParadas'), buses: geo('buses'), reportes: geo('reportes'), toque: geo('toque'), cinta: geo('cinta'), buses3d: geo('buses3d'), trayectorias: geo('trayectorias')
       },
       layers: [
         { id: 'fondo', type: 'background', paint: { 'background-color': c.tierra } },
@@ -517,10 +518,12 @@
           paint: { 'line-color': '#ffd60a', 'line-width': z([10, 3, 16, 6]), 'line-dasharray': [0.2, 1.6] } },
         { id: 'buses-3d', type: 'fill-extrusion', source: 'buses3d', layout: visible(filtros.buses),
           paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.9 } },
+        circulo('buses-reporte', 'reportes', { layout: visible(filtros.buses),
+          paint: { 'circle-radius': 5, 'circle-color': '#00796c', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } }),
         circulo('buses-halo', 'buses', { filter: ['==', ['get', 'nivel'], 2], layout: visible(filtros.buses),
           paint: { 'circle-radius': z([10, 13, 15, 22]), 'circle-color': '#ffd60a', 'circle-opacity': 0.45 } }),
         circulo('buses', 'buses', { paint: { 'circle-radius': ['interpolate', ['exponential', 1.5], ['zoom'], 10, ['match', ['get', 'nivel'], 2, 7, 0, 4, 5.5], 15, ['match', ['get', 'nivel'], 2, 12.5, 0, 7, 10]], 'circle-color': ['match', ['get', 'nivel'], 0, '#8e8e93', '#e8850c'],
-          'circle-opacity': ['match', ['get', 'nivel'], 0, 0.7, 1], 'circle-stroke-color': c.blanco, 'circle-stroke-width': 2.4, 'circle-stroke-opacity': ['match', ['get', 'nivel'], 0, 0.7, 1] } }),
+          'circle-opacity': 0, 'circle-stroke-color': ['match', ['get', 'nivel'], 0, '#777777', '#b45700'], 'circle-stroke-width': 2.4, 'circle-stroke-opacity': ['match', ['get', 'nivel'], 0, 0.7, 1] } }),
         { id: 'buses-texto', type: 'symbol', source: 'buses', minzoom: 11,
           layout: { 'text-field': ['get', 'etq'], 'text-font': ['Noto Sans Bold'], 'text-size': ['match', ['get', 'nivel'], 2, 13, 11], 'text-offset': [0, -1.6], 'text-anchor': 'bottom', 'text-allow-overlap': true },
           paint: { 'text-color': c.lugar, 'text-halo-color': c.halo, 'text-halo-width': 2 } }
@@ -699,6 +702,12 @@
   function pintarSenales() {
     quitarSenales();
     if (!activo || !mapa || !mapaListo) return;
+    if (vista === 'camino' && guia && guia.tr === activo.tr) {
+      var paso = guia.tr.tramos[guia.paso], parada = paso.tipo === 'bus' ? paso.baja : paso.hasta;
+      var puntoGuia = parada < 0 ? guia.b : { lat: red.lat[parada], lon: red.lon[parada] };
+      ponerSenal(puntoGuia.lon, puntoGuia.lat, (paso.tipo === 'bus' ? 'Baja en ' : 'Camina a ') + nombrePunto(parada, guia.a, guia.b), 'fuerte', paso.tipo === 'bus' ? 'bus' : 'caminar');
+      return;
+    }
     if (activo.varios) {
       activo.varios.forEach(function (op, i) {
         var t = primerBus(op), p = red.pat[t.pat], medio = p.s[Math.round(t.posSube + (t.posBaja - t.posSube) * (i + 1) / (activo.varios.length + 1))];
@@ -842,13 +851,20 @@
       return;
     }
     var caja = [[e.point.x - 9, e.point.y - 9], [e.point.x + 9, e.point.y + 9]];
-    var burbuja = mapa.getLayer('par-burbujas') ? mapa.queryRenderedFeatures(caja, { layers: ['par-burbujas'] })[0] : null;
+    var busTocado = mapa.getLayer('buses') && mapa.queryRenderedFeatures(caja, { layers: ['buses', 'buses-reporte'] }).length;
+    var burbuja = !busTocado && mapa.getLayer('par-burbujas') ? mapa.queryRenderedFeatures(caja, { layers: ['par-burbujas'] })[0] : null;
     if (burbuja) { mapa.easeTo({ center: burbuja.geometry.coordinates, zoom: Math.min(14.6, mapa.getZoom() + 2), duration: pocoMovimiento() ? 0 : 500 }); return; }
-    var capas = ['buses', 'ruta-extremos', 'ruta-paradas', 'recargas', 'estaciones', 'par-zonal', 'par-alim'].filter(function (id) { return mapa.getLayer(id); });
+    var capas = ['buses-reporte', 'buses', 'ruta-extremos', 'ruta-paradas', 'recargas', 'estaciones', 'par-zonal', 'par-alim'].filter(function (id) { return mapa.getLayer(id); });
     var hallados = mapa.queryRenderedFeatures(caja, { layers: capas });
     if (hallados.length) {
-      var p = hallados[0].properties;
-      if (hallados[0].layer.id === 'buses') { tostada('Bus ' + p.cod + (p.placa ? ' · ' + p.placa : '') + ''); return; }
+      var elegido = hallados.find(function (f) { return f.properties.reportado !== undefined; }) || hallados[0];
+      var p = elegido.properties;
+      if (p.reportado !== undefined) {
+        var edad = p.reportado ? minutos(Math.max(0, (ahora().getTime() - Number(p.reportado)) / 1000)) : null;
+        tostada(p.cod + ' · ' + (elegido.layer.id === 'buses' ? 'Posición estimada' : 'Posición reportada') +
+          ' · ' + (edad ? 'Última señal hace ' + edad : 'Hora de señal desconocida'));
+        return;
+      }
       if (p.tipo === 'estacion') { seleccionar({ tipo: 'estacion', e: +p.e }); return; }
       if (p.i !== undefined) { seleccionar({ tipo: 'paradero', i: +p.i }); return; }
     }
@@ -882,6 +898,7 @@
     var movio = ubi.lat === null || P.distancia(lat, lon, ubi.lat, ubi.lon) > 80;
     ubi.lat = lat; ubi.lon = lon; ubi.precision = precision; ubi.en = Date.now(); ubi.manual = !!manual; ubi.estado = 'ok';
     marcaYo();
+    if (guia && !manual) actualizarGuia();
     if (movio) pedirCerca();
     if (ubi.paraRuta) {           // se pidio "Mi ubicacion" al planear: se usa apenas llega
       var ctx = ubi.paraRuta; ubi.paraRuta = null;
@@ -956,10 +973,10 @@
     llamar('transmilenio_vehicles', { latitude: Math.round(ubi.lat * 1000) / 1000, longitude: Math.round(ubi.lon * 1000) / 1000, radius_m: 1200, per_page: 80 }).then(function (d) {
       var feats = (d.vehicles || []).filter(function (x) { return typeof x.latitude === 'number' && typeof x.longitude === 'number'; }).map(function (x) {
         var r = base.rut.id.indexOf(String(x.route_id));
-        return punto([x.longitude, x.latitude], { etq: x.route_code || (r >= 0 ? base.rut.cod[r] : ''), nivel: 1, cod: x.route_code || (r >= 0 ? base.rut.cod[r] : ''), placa: x.license_plate || '', va: x.stop_name || '' });
+        return punto([x.longitude, x.latitude], { reportado: Date.parse(x.reported_at) || 0, etq: x.route_code || (r >= 0 ? base.rut.cod[r] : ''), nivel: 1, cod: x.route_code || (r >= 0 ? base.rut.cod[r] : ''), placa: x.license_plate || '', va: x.stop_name || '' });
       });
       pararBuses();
-      datosMapa.buses = fc(feats); ponerDatos(['buses']);
+      datosMapa.reportes = fc(feats); ponerDatos(['reportes']);
       if (!filtros.buses) { filtros.buses = true; pintarFiltros(); }
       cerca.vivo = { estado: 'listo', n: feats.length, seg: servicio().seg };
       tostada(feats.length ? feats.length + (feats.length === 1 ? ' bus' : ' buses') + ' a menos de 1,2 km. Están en el mapa.' : 'No hay buses reportando cerca ahora.');
@@ -992,6 +1009,7 @@
     if (vista !== 'destino') ir('hoy'); else pintar();
   }
   function cerrarSesion() {
+    guia = null;
     E.perfil.nombre = ''; nube.nombrePendiente = '';
     guardar();
     $('inicio-nombre').value = '';
@@ -1350,9 +1368,13 @@
     var ops = [], vistas = {};
     trayectos.forEach(function (tr) { var t = primerBus(tr); if (t && !vistas[t.ruta] && ops.length < 3) { vistas[t.ruta] = 1; ops.push(tr); } });
     if (!ops.length) return;
+    comparacion = { opciones: ops, a: a, b: b, volver: vista };
+    ir('comparar');
     if (!mcp) { tostada(textoError({ code: 'sin_conector' })); return; }
     if (!quedanConsultas(ops.length)) { tostada('Necesitas ' + ops.length + ' consultas en vivo y tu tope de hoy no alcanza. Súbelo en Ajustes.'); return; }
+    var actual = comparacion;
     cargarFormas().then(function (lista) {
+      if (vista !== 'comparar' || actual !== comparacion) return;
       if (linea !== null) salirDeLinea();
       var lineas = [], paradas = [], limites = [];
       ops.forEach(function (tr) {
@@ -1371,7 +1393,7 @@
       ponerDatos(['ruta', 'rutaCompleta', 'rutaParadas']);
       pintarSenales();
       encuadrar(limites);
-      if (!esAncho()) fijarPanel('min');
+      if (!esAncho()) fijarPanel('medio');
       if (!filtros.buses) { filtros.buses = true; pintarFiltros(); }
       tostada('Buscando los buses de ' + ops.map(function (tr) { return primerBus(tr).letrero; }).join(', ') + '…');
       refrescarBuses(true);
@@ -1380,7 +1402,7 @@
   function pararBuses() {
     clearTimeout(flota.reloj); clearInterval(flota.anim);
     flota = { clave: '', rutas: [], buses: {}, reloj: null, anim: null, cuenta: 0, en: 0 };
-    datosMapa.buses = datosMapa.buses3d = datosMapa.trayectorias = VACIO; ponerDatos(['buses', 'buses3d', 'trayectorias']);
+    datosMapa.reportes = datosMapa.buses = datosMapa.buses3d = datosMapa.trayectorias = VACIO; ponerDatos(['reportes', 'buses', 'buses3d', 'trayectorias']);
     leyenda(false);
     if (mapa && mapa.getLayer('ruta-brillo')) mapa.setPaintProperty('ruta-brillo', 'line-opacity', 0);
   }
@@ -1395,8 +1417,8 @@
   function leyenda(si) {
     var e = $('leyenda-buses');
     if (!e) {
-      e = h('div', { id: 'leyenda-buses', class: 'leyenda', 'aria-hidden': 'true' },
-        h('span', {}, h('i', { style: 'background:#ffb000' }), 'Vienen cerca'), h('span', {}, h('i', { style: 'background:#e8850c' }), 'Vienen detrás'), h('span', {}, h('i', { style: 'background:#8e8e93' }), 'Ya pasaron'));
+      e = h('div', { id: 'leyenda-buses', class: 'leyenda', 'aria-label': 'Ubicación de los buses' },
+        h('span', {}, h('i', { style: 'background:#00796c' }), 'Reportado'), h('span', {}, h('i', { style: 'border:2px solid #b45700;background:transparent' }), 'Estimado'));
       $('app').appendChild(e);
     }
     e.hidden = !si;
@@ -1405,17 +1427,17 @@
    * Los 3 que vienen mas cerca de tu paradero se resaltan, con sus minutos y su trayectoria. */
   function moverBuses() {
     if (!flota.clave || document.hidden || moviendoMapa) return;
-    var ahoraMs = Date.now(), lista = [], en3d = mapa && mapa.getPitch() > 5, hayLimite = false;
+    var ahoraMs = Date.now(), lista = [], en3d = mapa && mapa.getPitch() > 5;
     Object.keys(flota.buses).forEach(function (id) {
       var b = flota.buses[id], c = [b.lon, b.lat], m = metricas[b.ruta], lim = flota.limite ? flota.limite[b.ruta] : undefined, sAhora = null, falta = null;
       var pasado = lim !== undefined && b.s !== null && b.s > lim;
       if (m && b.s !== null) { sAhora = b.s + b.v * Math.min(150, (ahoraMs - b.t) / 1000); c = puntoEnMetros(m, sAhora); }
-      if (lim !== undefined && sAhora !== null) { hayLimite = true; falta = pasado ? null : Math.max(0, lim - 150 - sAhora); }
+      if (lim !== undefined && sAhora !== null) { falta = pasado ? null : Math.max(0, lim - 150 - sAhora); }
       lista.push({ b: b, c: c, m: m, s: sAhora, falta: falta, pasado: pasado, fin: lim === undefined ? null : lim - 150 });
     });
     var cercanos = lista.filter(function (x) { return x.falta !== null; }).sort(function (x, y) { return x.falta - y.falta; }).slice(0, 3);
-    var puntos = [], cubos = [], trayectorias = [];
-    leyenda(hayLimite);
+    var reportes = [], puntos = [], cubos = [], trayectorias = [];
+    leyenda(lista.length > 0);
     lista.forEach(function (x) {
       // 2: los 3 que vienen mas cerca; 1: vienen detras; 0: ya pasaron tu paradero
       var cerca = cercanos.indexOf(x) >= 0, nivel = x.pasado ? 0 : (cerca ? 2 : 1), cod = base.rut.cod[x.b.ruta], etq = cod;
@@ -1425,15 +1447,16 @@
         etq = cod + (min <= 0 ? ' · llegando' : ' · a ' + min + ' min');
         if (cerca && x.falta > 30) trayectorias.push(trazo(tramoMetros(x.m, x.s, x.fin), {}));
       }
-      puntos.push(punto(x.c, { cod: cod, etq: etq, nivel: nivel, placa: x.b.placa }));
+      reportes.push(punto([x.b.lon, x.b.lat], { cod: cod, reportado: x.b.reportado }));
+      puntos.push(punto(x.c, { reportado: x.b.reportado, cod: cod, etq: etq, nivel: nivel, placa: x.b.placa }));
       if (en3d) {
         var lado = cerca ? 60 : 45, dx = lado / (Math.cos(x.c[1] * Math.PI / 180) * 111320), dy = lado / 110574;
         cubos.push({ type: 'Feature', properties: { h: cerca ? 260 : (nivel === 0 ? 60 : 130), color: cerca ? '#ffb000' : (nivel === 0 ? '#8e8e93' : '#e8850c') },
           geometry: { type: 'Polygon', coordinates: [[[x.c[0] - dx, x.c[1] - dy], [x.c[0] + dx, x.c[1] - dy], [x.c[0] + dx, x.c[1] + dy], [x.c[0] - dx, x.c[1] + dy], [x.c[0] - dx, x.c[1] - dy]]] } });
       }
     });
-    datosMapa.buses = fc(puntos); datosMapa.buses3d = fc(cubos); datosMapa.trayectorias = fc(trayectorias);
-    ponerDatos(['buses', 'buses3d', 'trayectorias']);
+    datosMapa.reportes = fc(reportes); datosMapa.buses = fc(puntos); datosMapa.buses3d = fc(cubos); datosMapa.trayectorias = fc(trayectorias);
+    ponerDatos(['reportes', 'buses', 'buses3d', 'trayectorias']);
     // la ruta late suave mientras se sigue en vivo
     latido = (latido + 1) % 2;
     if (mapa && mapa.getLayer('ruta-brillo')) mapa.setPaintProperty('ruta-brillo', 'line-opacity', pocoMovimiento() ? 0.45 : (latido ? 0.6 : 0.3));
@@ -1486,7 +1509,7 @@
             if (medida >= 0 && medida < 22) { v = Math.max(0.5, medida); vels.push(medida * 3.6); }
           }
         }
-        nuevos[id] = { ruta: x.r, lon: x.longitude, lat: x.latitude, s: s0, v: v, t: tBus, placa: x.license_plate || '', va: x.stop_name || '' };
+        nuevos[id] = { ruta: x.r, lon: x.longitude, lat: x.latitude, s: s0, v: v, t: tBus, reportado: isNaN(leida) ? 0 : leida, placa: x.license_plate || '', va: x.stop_name || '' };
         n++;
       }); });
       flota.buses = nuevos; flota.cuenta++;
@@ -1530,7 +1553,7 @@
     var ver = function (id, si) { if (mapa.getLayer(id)) mapa.setLayoutProperty(id, 'visibility', si ? 'visible' : 'none'); };
     ver('par-zonal', filtros.paraderos); ver('par-alim', filtros.paraderos); ver('par-burbujas', filtros.paraderos); ver('par-burbujas-n', filtros.paraderos);
     ver('estaciones', filtros.estaciones); ver('recargas', filtros.recargas); ver('recargas-signo', filtros.recargas);
-    ver('buses', filtros.buses); ver('buses-texto', filtros.buses); ver('buses-3d', filtros.buses); ver('buses-halo', filtros.buses);
+    ver('buses-reporte', filtros.buses); ver('buses', filtros.buses); ver('buses-texto', filtros.buses); ver('buses-3d', filtros.buses); ver('buses-halo', filtros.buses);
   }
   function alternarFiltro(id) {
     filtros[id] = !filtros[id];
@@ -1545,8 +1568,10 @@
 
   var relojEntrada = null;
   function ir(nombre) {
+    var saliaDeGuia = vista === 'camino' && nombre !== vista;
     var cambia = vista !== nombre, c = $('contenido');
     vista = nombre;
+    if (saliaDeGuia) pintarSenales();
     if (nombre === 'hoy' || nombre === 'rutinas' || nombre === 'ajustes') pestana = nombre;
     pintar();
     c.scrollTop = 0;
@@ -1571,7 +1596,7 @@
     });
     if (!base) { c.appendChild(cabecera('A Tiempo')); c.appendChild(espera('Cargando la red de transporte…')); return; }
     ({ hoy: vistaHoy, ruta: vistaRuta, toque: vistaToque, buscar: vistaBuscar, rutinas: vistaRutinas, rutina: vistaRutina,
-       ajustes: vistaAjustes, lugar: vistaLugar, linea: vistaLinea, rutas: vistaRutas, destino: vistaDestino }[vista] || vistaHoy)(c);
+       comparar: vistaComparar, camino: vistaCamino, ajustes: vistaAjustes, lugar: vistaLugar, linea: vistaLinea, rutas: vistaRutas, destino: vistaDestino }[vista] || vistaHoy)(c);
     c.scrollTop = arriba;
   }
 
@@ -1611,8 +1636,10 @@
     var yo = miPunto(), origen = origenPorDefecto(), desdeTexto = 'Elige el origen';
     if (yo) desdeTexto = 'Mi ubicación';
     else if (origen && lugar(origen.id)) desdeTexto = lugar(origen.id).nombre;
-    c.appendChild(h('h2', { class: 'destino-titulo', text: '¿A dónde vas?' }));
-    c.appendChild(h('button', { type: 'button', class: 'a-donde', onclick: function () { abrirBuscador('hasta', 'destino'); } },
+    var portada = h('div', { class: 'destino-hero' });
+    c.appendChild(portada);
+    portada.appendChild(h('h2', { class: 'destino-titulo', text: '¿A dónde vas?' }));
+    portada.appendChild(h('button', { type: 'button', class: 'a-donde', onclick: function () { abrirBuscador('hasta', 'destino'); } },
       icono('buscar'), h('span', { class: 'crece', text: 'Paradero, estación, ruta o lugar' })));
     c.appendChild(h('button', { type: 'button', class: 'punto-b', style: 'margin-top:10px', onclick: function () { abrirBuscador('desde', 'destino'); } },
       h('small', { text: 'Desde' }), h('b', { class: 'corta', text: desdeTexto }), icono('cambiar')));
@@ -1636,6 +1663,7 @@
   function buscarDestino() { prepararRuta(null, null, {}); abrirBuscador('hasta'); }
 
   function vistaHoy(c) {
+    if (guia) c.appendChild(boton('Volver al viaje en curso', 'principal', function () { ir('camino'); }, 'bus'));
     var s = servicio(), nombre = E.perfil.nombre || nube.nombrePendiente || '';
     var saldo = h('button', { type: 'button', class: 'sello ' + (E.saldo !== null && E.saldo < base.tarifa * 2 ? 'naranja' : ''), onclick: function () { ir('ajustes'); },
       text: E.saldo === null ? 'Anotar saldo' : 'Saldo ' + pesos(E.saldo) });
@@ -1749,7 +1777,7 @@
 
   function tarjetaViaje(v) {
     var a = lugar(v.rutina.desde), b = lugar(v.rutina.hasta);
-    var t = h('div', { class: 'tarjeta' });
+    var t = h('div', { class: 'tarjeta rutina-viaje' });
     t.appendChild(h('div', { class: 'entre' },
       h('span', { class: 'fuerte corta', text: v.rutina.nombre }),
       h('span', { class: 'mini', text: nombreDia(v) + ' · ' + (v.rutina.modo === 'llegar' ? 'llegar ' : 'salir ') + hora12(v.objetivo) })));
@@ -1771,6 +1799,10 @@
     if (noLlega) { titulo = 'No llegas a las ' + hora12(limite); color = 'rojo hora'; }
     t.appendChild(h('div', { class: 'grande ' + color, text: titulo }));
 
+    if (!v.dias) t.appendChild(boton('Ya perdí este bus', 'claro chico', function () {
+      var origen = miPunto() || { tipo: 'punto', lat: red.lat[bus.sube], lon: red.lon[bus.sube], nombre: base.par.nom[bus.sube] };
+      abrirRuta(origen, { tipo: 'lugar', id: b.id }, { perdido: bus });
+    }, 'reloj'));
     var paradero = base.par.nom[bus.sube];
     t.appendChild(h('p', { class: 'sub', text: (plan.tarde ? 'Si sales ya: caminas ' : 'Caminas ') + minutos(tr.tramos[0].seg) + ' hasta ' + paradero + '.' }));
     t.appendChild(h('div', { class: 'fila', style: 'margin-top:8px' }, resumenTramos(tr)));
@@ -1791,6 +1823,7 @@
     if (E.saldo !== null && E.saldo < base.tarifa) sellos.appendChild(sello('Saldo insuficiente', 'rojo'));
     if (v.registrado) sellos.appendChild(sello('Viaje registrado', 'verde'));
     t.appendChild(sellos);
+    t.appendChild(tarjetaRecarga(tr, a, b));
 
     // lo que esta pasando: algo fuera de lo comun, desvios y avisos oficiales
     if (v.vivo && v.vivo.estado === 'listo' && v.vivo.anomalia) {
@@ -1822,7 +1855,8 @@
     if (noLlega || plan.tarde || anomalia) t.appendChild(lineaMoto(a, b, servicio().seg, v.tipo, plan.llega - plan.sale, noLlega || anomalia));
 
     t.appendChild(h('div', { class: 'botones' },
-      boton('Mapa', 'principal chico', function () { dibujarTrayecto(tr, a, b, false, v); if (!esAncho()) fijarPanel('min'); }, 'mapa'),
+      boton('Voy en camino', 'principal chico', function () { iniciarGuia(tr, a, b); }, 'bus'),
+      boton('Mapa', 'claro chico', function () { dibujarTrayecto(tr, a, b, false, v); if (!esAncho()) fijarPanel('min'); }, 'mapa'),
       boton('En vivo', 'claro chico', function () {
         // un toque: llegadas al paradero, ruta iluminada y buses que vienen hacia ti
         var conBuses = quedanConsultas(2);
@@ -1851,6 +1885,111 @@
     if (indiceParadero === -2) return b.nombre || 'tu destino';
     return base.par.nom[indiceParadero] + (base.par.cod[indiceParadero] ? ' (' + base.par.cod[indiceParadero] + ')' : '') + (extremo || '');
   }
+  function metrica(nombre, valor) {
+    return h('span', {}, h('small', { text: nombre }), h('b', { text: valor }));
+  }
+
+  function metricasRuta(tr) {
+    return h('div', { class: 'metricas' }, metrica('Llegada', hora12(tr.llega)), metrica('A pie', minutos(tr.caminataSeg)), metrica('Cambios', String(tr.transbordos)));
+  }
+
+  function ventajasRuta(tr, opciones) {
+    function destaca(campo) {
+      return opciones.every(function (op) { return tr[campo] <= op[campo]; }) && opciones.some(function (op) { return tr[campo] < op[campo]; });
+    }
+    return [destaca('llega') ? sello('Llegas antes', 'verde') : null,
+      destaca('caminataSeg') ? sello('Caminas menos', 'azul') : null, !tr.transbordos ? sello('Sin transbordos') : null];
+  }
+
+  var comparacion = null;
+  function vistaComparar(c) {
+    var datos = comparacion;
+    c.appendChild(cabecera('Buses que me sirven', function () { ir(datos.volver); }));
+    c.appendChild(h('p', { class: 'mini', text: 'Llegadas según el horario oficial' }));
+    datos.opciones.forEach(function (tr) {
+      var bus = primerBus(tr);
+      c.appendChild(h('section', { class: 'tarjeta' }, h('div', { class: 'fila' }, chip(bus.sis, bus.letrero), h('strong', { text: base.par.nom[bus.sube] })),
+        metricasRuta(tr), h('div', { class: 'sellos' }, ventajasRuta(tr, datos.opciones)),
+        boton('Voy en camino', 'claro chico', function () { iniciarGuia(tr, datos.a, datos.b); }, 'bus')));
+    });
+  }
+
+  function tarjetaRecarga(tr, a, b) {
+    var costo = tr.tarifa * 2, falta = costo - E.saldo;
+    var tarjeta = h('section', { class: 'saldo-viaje' },
+      h('strong', { text: E.saldo === null ? 'Saldo para ida y vuelta' : falta <= 0 ? 'Ida y vuelta cubiertas' :
+        E.saldo >= tr.tarifa ? 'Te falta para el regreso' : 'Recarga antes de salir' }),
+      h('p', { class: 'mini', text: 'Dos pasajes · ' + pesos(costo) + (E.saldo === null ? '' : ' · saldo estimado ' + pesos(E.saldo)) }));
+    if (E.saldo === null) tarjeta.appendChild(boton('Anotar saldo', 'claro chico', function () { ir('ajustes'); }));
+    else if (falta > 0) tarjeta.appendChild(boton('Ver dónde recargar ' + pesos(falta), 'claro chico', function () {
+      var mejor = null, minimo = Infinity;
+      function extremo(i) { return i === -1 ? a : i === -2 ? b : { lat: red.lat[i], lon: red.lon[i] }; }
+      // Compara el desvío en los tramos a pie, donde se puede pasar por una taquilla.
+      var accesibles = E.saldo < tr.tarifa ? tr.tramos.slice(0, 1) : tr.tramos;
+      accesibles.filter(function (t) { return t.tipo === 'pie'; }).forEach(function (t) {
+        var inicio = extremo(t.desde), fin = extremo(t.hasta);
+        base.est.nom.forEach(function (_, i) {
+          var lat = base.est.lat[i] / 1e5, lon = base.est.lon[i] / 1e5;
+          var extra = P.distancia(inicio.lat, inicio.lon, lat, lon) + P.distancia(lat, lon, fin.lat, fin.lon) - P.distancia(inicio.lat, inicio.lon, fin.lat, fin.lon);
+          if (extra < minimo) { minimo = extra; mejor = i; }
+        });
+      });
+      if (mejor === null) { tostada('Sin taquillas disponibles en el mapa.'); return; }
+      if (!filtros.recargas) alternarFiltro('recargas');
+      seleccionar({ tipo: 'estacion', e: mejor });
+      tostada('Taquilla con menor desvío estimado · ' + Math.round(minimo) + ' m adicionales en línea recta');
+    }, 'mapa'));
+    return tarjeta;
+  }
+
+  function iniciarGuia(tr, a, b) {
+    guia = { tr: tr, a: a, b: b, paso: 0, pos: null, aviso: false };
+    dibujarTrayecto(tr, a, b);
+    ir('camino');
+    fijarPanel('medio');
+    if (ubi.vigia === null) pedirUbicacion(false);
+  }
+
+  function actualizarGuia() {
+    var t = guia.tr.tramos[guia.paso];
+    if (!t || t.tipo !== 'bus' || ubi.precision > 100) return;
+    var stops = red.pat[t.pat].s, cerca = -1, menor = 100;
+    for (var i = guia.pos; i <= t.posBaja; i++) {
+      var d = P.distancia(ubi.lat, ubi.lon, red.lat[stops[i]], red.lon[stops[i]]);
+      if (d < menor) { menor = d; cerca = i; }
+    }
+    if (cerca <= guia.pos) return;
+    guia.pos = cerca;
+    if (!guia.aviso && cerca >= t.posBaja - 1) {
+      guia.aviso = true; tostada('Prepárate para bajar en ' + base.par.nom[t.baja]);
+      if (navigator.vibrate) navigator.vibrate(250);
+    }
+    if (vista === 'camino') pintar();
+  }
+
+  function vistaCamino(c) {
+    if (!guia) { vistaHoy(c); return; }
+    pintarSenales();
+    var g = guia, t = g.tr.tramos[g.paso], bus = t.tipo === 'bus';
+    var destino = nombrePunto(bus ? t.baja : t.hasta, g.a, g.b);
+    var faltan = bus ? t.posBaja - g.pos : 0;
+    c.appendChild(cabecera('Voy en camino', volverAHoy));
+    var siguiente = g.tr.tramos.slice(g.paso + 1).find(function (x) { return x.tipo === 'bus'; });
+    c.appendChild(h('section', { class: 'guia-viaje', 'aria-live': 'polite' },
+      h('small', { text: 'Paso ' + (g.paso + 1) + ' de ' + g.tr.tramos.length + (bus ? ' · ' + t.letrero : ' · A pie') }),
+      h('h3', { text: bus ? (faltan ? 'Baja en ' + faltan + (faltan === 1 ? ' parada' : ' paradas') : 'Baja aquí') : 'Camina ' + minutos(t.seg) }),
+      h('p', { text: destino }), siguiente ? h('small', { text: 'Luego toma ' + siguiente.letrero + ' en ' + base.par.nom[siguiente.sube] }) : null));
+    if (bus && (ubi.estado !== 'ok' || ubi.manual || ubi.precision > 100)) c.appendChild(h('p', { class: 'mini', text: 'Esperando ubicación precisa. Puedes avanzar con el botón al bajarte.' }));
+    c.appendChild(h('div', { class: 'botones' }, boton(bus ? 'Ya me bajé' : siguiente ? 'Ya subí al bus' : 'Llegué al destino', 'principal', function () {
+      g.paso++;
+      if (g.paso === g.tr.tramos.length) { guia = null; limpiarTrayecto(); volverAHoy(); return; }
+      var tramo = g.tr.tramos[g.paso];
+      g.pos = tramo.tipo === 'bus' ? tramo.posSube : null; g.aviso = false;
+      if (tramo.tipo === 'bus' && tramo.paradas === 1) tostada('Baja en la siguiente parada');
+      pintar();
+    }), boton('Finalizar viaje', 'claro', function () { guia = null; limpiarTrayecto(); volverAHoy(); })));
+  }
+
   function detalleTrayecto(tr, a, b) {
     var ul = h('ul', { class: 'pasos' });
     tr.tramos.forEach(function (t) {
@@ -1885,6 +2024,7 @@
     else if (!desde && origenCasa() && !(hasta && hasta.tipo === 'lugar' && hasta.id === origenCasa().id)) desde = { tipo: 'lugar', id: origenCasa().id };
     Q.desde = desde; Q.hasta = hasta; Q.modo = op.modo || 'ahora';
     Q.hora = op.hora || segAHhmm(servicio().seg); Q.rutina = op.rutina || null;
+    Q.perdido = op.perdido || null; Q.sec++;
     Q.fecha = op.fecha || null; Q.tipo = op.tipo || null;
     Q.res = null; Q.sel = 0; Q.estado = '';
     seleccion = null; marcarPunto();
@@ -1904,7 +2044,9 @@
     Q.estado = 'calculando';
     var marca = ++Q.sec, modo = Q.modo === 'llegar' ? 'llegar' : 'salir';
     pintar();
-    planearConRespaldo({ orden: 'planear', tipo: Q.tipoUsado, consulta: consulta(a, b, modo, modo === 'llegar' ? t - E.ajustes.margen * 60 : t, Q.tipoUsado) }).then(function (res) {
+    var pedido = consulta(a, b, modo, modo === 'llegar' ? t - E.ajustes.margen * 60 : t, Q.tipoUsado);
+    pedido.perdido = Q.perdido;
+    planearConRespaldo({ orden: 'planear', tipo: Q.tipoUsado, consulta: pedido }).then(function (res) {
       if (marca !== Q.sec) return;
       Q.res = res; Q.estado = 'listo'; Q.sel = 0;
       if (vista === 'ruta') pintar();
@@ -1914,7 +2056,7 @@
 
   function vistaRuta(c) {
     var a = resolver(Q.desde), b = resolver(Q.hasta);
-    c.appendChild(cabecera('Planear viaje', function () { limpiarTrayecto(); volverAHoy(); planearViajes(); }));
+    c.appendChild(cabecera(Q.perdido ? 'Después del bus perdido' : 'Planear viaje', function () { limpiarTrayecto(); volverAHoy(); planearViajes(); }));
     var puntos = h('div', { class: 'puntos' },
       h('button', { type: 'button', class: 'punto-b', onclick: function () { abrirBuscador('desde'); } }, h('small', { text: 'Desde' }), h('b', { class: 'corta', text: a ? a.nombre : 'Elige el punto de partida' })),
       h('button', { type: 'button', class: 'punto-b', onclick: function () { abrirBuscador('hasta'); } }, h('small', { text: 'Hasta' }), h('b', { class: 'corta', text: b ? b.nombre : 'Elige a dónde vas' })));
@@ -1924,7 +2066,7 @@
     [['ahora', 'Salir ahora'], ['salir', 'Salir a las'], ['llegar', 'Llegar a las']].forEach(function (m) {
       seg.appendChild(h('button', { type: 'button', 'aria-pressed': String(Q.modo === m[0]), text: m[1], onclick: function () { Q.modo = m[0]; calcularRuta(); } }));
     });
-    c.appendChild(seg);
+    if (!Q.perdido) c.appendChild(seg);
     if (Q.modo !== 'ahora') {
       c.appendChild(h('label', { class: 'campo' }, h('span', { text: Q.modo === 'llegar' ? 'Hora de llegada' : 'Hora de salida' }),
         h('input', { class: 'entrada', id: 'ruta-hora', type: 'time', value: Q.hora, onchange: function (e) { if (e.target.value) { Q.hora = e.target.value; calcularRuta(); } } })));
@@ -1944,25 +2086,33 @@
     if (res.ampliado) c.appendChild(aviso('', 'cambiar', 'No hay ruta directa', 'Te muestro opciones con ' + res.ampliado + (res.ampliado === 1 ? ' transbordo' : ' transbordos') + '. El transbordo no se cobra.'));
     c.appendChild(h('div', { class: 'seccion', text: 'Las opciones más rápidas' }));
     c.appendChild(h('div', { class: 'botones', style: 'margin:0 0 4px' }, boton('Buses que me sirven, en vivo', 'claro chico', function () { verVarios(res.trayectos, a, b); }, 'vivo')));
-    res.trayectos.forEach(function (tr, i) {
+    var opciones = res.trayectos;
+
+    var detalleElegido;
+    opciones.forEach(function (tr, i) {
       var elegida = i === Q.sel;
       var t = h('button', { type: 'button', class: 'tarjeta opcion', 'aria-pressed': String(elegida), onclick: function () { Q.sel = i; pintar(); dibujarTrayecto(tr, a, b); } },
-        h('div', { class: 'entre' }, h('span', { class: 'fuerte num', text: hora12(tr.sale) + ' → ' + hora12(tr.llega) }), h('span', { class: 'mini num', text: minutos(tr.duracion) })),
+        h('div', { class: 'entre' }, h('span', { class: 'fuerte num', text: 'Sal a las ' + hora12(tr.sale) }), h('span', { class: 'mini num', text: minutos(tr.duracion) })),
+        Q.perdido ? h('strong', { text: primerBus(tr).sube === Q.perdido.sube ? 'Toma el siguiente en ' + base.par.nom[primerBus(tr).sube] : 'Camina a ' + base.par.nom[primerBus(tr).sube] }) : null,
         resumenTramos(tr),
-        h('div', { class: 'sellos' }, tr.etiquetas.map(function (e, j) { return sello(e, i === 0 && j === 0 ? 'verde' : ''); }), selloTrafico(tr),
+        metricasRuta(tr),
+        h('div', { class: 'sellos' }, ventajasRuta(tr, opciones), selloTrafico(tr),
           esPico(Q.tipoUsado, tr.sale) ? sello('Hora pico', 'naranja') : null));
       c.appendChild(t);
       if (elegida) {
-        var d = h('div', { style: 'margin:-2px 2px 14px' }, detalleTrayecto(tr, a, b));
-        var acciones = h('div', { class: 'botones' }, boton('Mapa', 'principal chico', function () { dibujarTrayecto(tr, a, b); if (!esAncho()) fijarPanel('min'); }, 'mapa'));
+        var d = h('div', { class: 'detalle-opcion' });
+        var acciones = h('div', { class: 'botones' }, boton('Mapa', 'claro chico', function () { dibujarTrayecto(tr, a, b); if (!esAncho()) fijarPanel('min'); }, 'mapa'));
+        acciones.prepend(boton('Voy en camino', 'principal chico', function () { iniciarGuia(tr, a, b); }, 'bus'));
         if (Q.rutina) acciones.appendChild(boton('Usar siempre esta ruta', 'chico', function () {
           E.rutinas.forEach(function (r) { if (r.id === Q.rutina) r.preferida = rutasDe(tr); });
           guardar(); planearViajes(true); tostada('Listo. Tu rutina usará esta ruta cuando esté disponible.');
         }, 'check'));
         d.appendChild(acciones);
-        c.appendChild(d);
+        d.appendChild(detalleTrayecto(tr, a, b));
+        detalleElegido = d;
       }
     });
+    if (detalleElegido) c.appendChild(detalleElegido);
     var mejor = res.trayectos[0];
     c.appendChild(lineaMoto(a, b, Q.tUsado, Q.tipoUsado, mejor.duracion, false));
     if (res.aPie && res.aPie.seg < mejor.duracion) c.appendChild(h('div', { class: 'fila mini', style: 'margin-top:8px' }, icono('caminar'), h('span', { text: 'A pie llegas en ' + minutos(res.aPie.seg) + ' (' + res.aPie.m + ' m).' })));
