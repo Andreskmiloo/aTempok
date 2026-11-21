@@ -7,7 +7,7 @@ description: Mantener y publicar "A Tiempo", la app de SITP/TransMilenio de este
 
 ## Qué es
 - App de una página publicada como artifact privado: https://claude.ai/artifact/6tQouZVB9NQ9d2wk3U7tHk
-- Rama de trabajo: `a-tiempo`. No crear PR si no lo piden.
+- Repositorio: `Andreskmiloo/aTempok`, rama `main`. El anterior, `app-tm-personal`, queda solo como respaldo. No crear PR si no lo piden.
 - Archivos: `index.html` (fragmento: estilos, iconos, estructura), `app.js` (interfaz), `planificador.js` (rutas, tráfico, resumen de ruta; corre en navegador y Node), `trabajador.js`, `red/` (horario compacto), `mapa/` (teselas y letras), `herramientas/`, `pruebas/`.
 
 ## Preferencias del usuario
@@ -39,7 +39,6 @@ description: Mantener y publicar "A Tiempo", la app de SITP/TransMilenio de este
 - `[hidden]{display:none!important}` es necesario.
 - Muchas rutas del SITP son circulares en un solo patrón: se parten en el punto de giro `k` (`resumenRuta`).
 - Si no hay ruta con los transbordos elegidos, `planearConRespaldo` prueba con uno más y lo avisa.
-- El repositorio solo sigue `main`: tras subir, `git fetch origin +refs/heads/a-tiempo:refs/remotes/origin/a-tiempo`.
 - OpenFreeMap exige un User-Agent propio y honesto; no falsificarlo.
 - Cada consulta en vivo cuesta 10 créditos de Croma: siempre al pulsar o con tope diario.
 - Sin GPS garantizado, sin NFC y sin avisos con la app cerrada; la ubicación tiene respaldo manual tocando el mapa.
