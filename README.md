@@ -18,6 +18,11 @@ App para moverse en SITP y TransMilenio en Bogotá:
 - Horarios, próximas salidas y último bus de cada ruta.
 - Datos en vivo (llegadas, buses y alertas) con el conector de Croma, con tope de consultas para cuidar los créditos.
 - Comparación con moto y saldo estimado de la tarjeta.
+- Jarvis: asistente que responde por texto o por voz (próximos viajes, planear, ver una ruta, buses en vivo, alertas y llegadas). Usa el uso de Claude de quien lo abre.
+- Mapa 3D con relieve de los cerros, sombras, edificios (donde OpenStreetMap los tiene) y cielo según la hora del sol.
+- Paraderos agrupados en burbujas al alejar el mapa; botón 2D/3D y vuelo de entrada a tu ubicación.
+- Abrir el tramo a pie o la ruta en Waze.
+- Atajos de teclado: J Jarvis, V en vivo, R rutas, Esc volver.
 
 La app es una página que se publica como artifact privado de Claude. No lleva llaves ni datos personales:
 los lugares y rutinas de cada persona se guardan en su espacio privado de la base del artifact y en su navegador.
@@ -31,7 +36,7 @@ los lugares y rutinas de cada persona se guardan en su espacio privado de la bas
 | `planificador.js` | Búsqueda de rutas por rondas sobre la red compacta (corre en navegador y en Node) |
 | `trabajador.js` | Corre el planificador en segundo plano |
 | `red/` | Red de transporte compacta: paraderos, rutas, secuencias, viajes por tipo de día y recorridos |
-| `mapa/` | Mapa base empaquetado: teselas vectoriales y letras |
+| `mapa/` | Mapa base empaquetado: teselas vectoriales (`t/`), relieve (`r/`) y letras |
 | `herramientas/` | Scripts que arman `red/` y `mapa/` |
 | `pruebas/` | Pruebas del planificador |
 

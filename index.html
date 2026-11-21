@@ -24,6 +24,7 @@
   --azul-suave: #e3eefb;
   --sombra: 0 6px 22px rgba(20, 20, 30, .13);
   --sombra-corta: 0 2px 8px rgba(20, 20, 30, .12);
+  --vidrio: rgba(255, 255, 255, .74);
   --letra: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --izq: max(16px, env(safe-area-inset-left, 0px));
   --der: max(16px, env(safe-area-inset-right, 0px));
@@ -36,7 +37,7 @@
     --texto: #f5f5f7; --texto2: #a3a3aa; --linea: #38383c; --marca: #f5f5f7; --sobre-marca: #1d1d1f; --foco: #6cb0ff;
     --verde: #3ad27a; --verde-suave: #143421; --naranja: #ffa730; --naranja-suave: #3b2a10;
     --rojo: #ff6a5f; --rojo-suave: #3d1816; --azul: #6cb0ff; --azul-suave: #14283f;
-    --sombra: 0 6px 22px rgba(0, 0, 0, .5); --sombra-corta: 0 2px 8px rgba(0, 0, 0, .45);
+    --sombra: 0 6px 22px rgba(0, 0, 0, .5); --sombra-corta: 0 2px 8px rgba(0, 0, 0, .45); --vidrio: rgba(28, 28, 30, .7);
     color-scheme: dark;
   }
 }
@@ -45,7 +46,7 @@
   --texto: #f5f5f7; --texto2: #a3a3aa; --linea: #38383c; --marca: #f5f5f7; --sobre-marca: #1d1d1f; --foco: #6cb0ff;
   --verde: #3ad27a; --verde-suave: #143421; --naranja: #ffa730; --naranja-suave: #3b2a10;
   --rojo: #ff6a5f; --rojo-suave: #3d1816; --azul: #6cb0ff; --azul-suave: #14283f;
-  --sombra: 0 6px 22px rgba(0, 0, 0, .5); --sombra-corta: 0 2px 8px rgba(0, 0, 0, .45);
+  --sombra: 0 6px 22px rgba(0, 0, 0, .5); --sombra-corta: 0 2px 8px rgba(0, 0, 0, .45); --vidrio: rgba(28, 28, 30, .7);
   color-scheme: dark;
 }
 
@@ -95,7 +96,7 @@ svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-widt
 #panel.arrastrando { transition: none; }
 #asa { flex: none; height: 24px; display: grid; place-items: center; border: 0; background: none; width: 100%; touch-action: none; cursor: grab; }
 #asa span { width: 38px; height: 5px; border-radius: 3px; background: var(--superficie3); }
-#contenido { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--der) 18px var(--izq); }
+#contenido { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 0 var(--der) 18px var(--izq); }
 
 #pestanas { position: absolute; left: 0; right: 0; bottom: 0; height: var(--pestanas); z-index: 7; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--superficie); border-top: 1px solid var(--linea); padding: 0 var(--der) 0 var(--izq); }
 #pestanas button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; background: none; color: var(--texto2); font-size: 11px; font-weight: 600; }
@@ -304,6 +305,31 @@ select.entrada { appearance: none; -webkit-appearance: none; }
 @media (min-width: 900px) { .leyenda { left: 432px; bottom: 30px; } }
 @media (max-width: 899px) { #app[data-panel="max"] .leyenda { display: none; } }
 
+/* ---------- Jarvis ---------- */
+#controles #c-jarvis, #controles #c-3d { font-weight: 800; font-size: 15px; }
+#controles #c-jarvis { background: var(--marca); color: var(--sobre-marca); }
+.charla { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.msg { max-width: 88%; padding: 9px 12px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4; font-size: 14.5px; }
+.msg.yo { align-self: flex-end; background: var(--marca); color: var(--sobre-marca); border-bottom-right-radius: 5px; }
+.msg.j { align-self: flex-start; background: var(--superficie2); border-bottom-left-radius: 5px; }
+.msg.pensando { color: var(--texto2); }
+.sugerencias { display: flex; flex-direction: column; gap: 6px; }
+.sugerencia { text-align: left; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 13px; background: var(--superficie); color: var(--texto); font-size: 14px; font-weight: 600; }
+.chat-form { display: flex; gap: 8px; align-items: center; position: sticky; bottom: 0; padding: 8px 0 2px; background: var(--superficie); }
+.chat-form .entrada { flex: 1; min-width: 0; }
+.chat-form .boton { flex: none; height: 46px; }
+.redondo.escuchando { background: var(--rojo); color: #fff; animation: latido-mic 1.2s ease-in-out infinite; }
+@keyframes latido-mic { 50% { box-shadow: 0 0 0 6px var(--rojo-suave); } }
+a.boton { text-decoration: none; }
+
+/* ---------- vidrio (idea del Ojo de Dios) ---------- */
+@supports ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
+  .buscador, .filtro:not([aria-pressed="true"]), #controles button:not(#c-jarvis), .leyenda, #mostrar-panel {
+    background: var(--vidrio); -webkit-backdrop-filter: blur(14px) saturate(1.6); backdrop-filter: blur(14px) saturate(1.6);
+  }
+  #mostrar-panel { color: var(--texto); }
+}
+
 /* ---------- movimiento ---------- */
 #contenido.entra > * { animation: entrar .3s cubic-bezier(.2, .8, .2, 1) both; }
 #contenido.entra > *:nth-child(2) { animation-delay: .03s; }
@@ -376,6 +402,7 @@ select.entrada { appearance: none; -webkit-appearance: none; }
   <symbol id="i-subir" viewBox="0 0 24 24"><path d="M5.5 15L12 8.5l6.5 6.5"/></symbol>
   <symbol id="i-3d" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
   <symbol id="i-salir" viewBox="0 0 24 24"><path d="M14 4.5h3.5a2 2 0 012 2v11a2 2 0 01-2 2H14"/><path d="M10 16.5L5.5 12 10 7.5M5.5 12H15"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/></symbol>
   <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M9 5L3.5 7v12.5L9 17.5l6 2 5.5-2V5L15 7z"/><path d="M9 5v12.5M15 7v12.5"/></symbol>
 </svg>
 
@@ -399,6 +426,8 @@ select.entrada { appearance: none; -webkit-appearance: none; }
   <div id="controles">
     <button type="button" id="c-mas" class="solo-ancho" aria-label="Acercar"><svg class="i"><use href="#i-mas"/></svg></button>
     <button type="button" id="c-menos" class="solo-ancho" aria-label="Alejar"><svg class="i"><use href="#i-menos"/></svg></button>
+    <button type="button" id="c-jarvis" aria-label="Jarvis, asistente de rutas" title="Jarvis (J)" hidden><b>J</b></button>
+    <button type="button" id="c-3d" aria-label="Ver el mapa en 3D" title="2D / 3D"><b>3D</b></button>
     <button type="button" id="c-yo" aria-label="Mi ubicación"><svg class="i"><use href="#i-ubicacion"/></svg></button>
     <button type="button" id="c-centrar" aria-label="Centrar en mi ruta"><svg class="i"><use href="#i-centrar"/></svg></button>
   </div>

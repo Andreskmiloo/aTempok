@@ -23,7 +23,7 @@ description: Mantener y publicar "A Tiempo", la app de SITP/TransMilenio de este
 ## Tareas comunes
 - **Probar:** `node pruebas/planificador.prueba.js` y `node --check app.js`.
 - **Actualizar horario:** bajar `https://gtfs.transmilenio.gov.co/GTFS.zip`, descomprimir y `python herramientas/red.py <gtfs> red` (requiere `duckdb`). Cambia a diario.
-- **Publicar:** herramienta Artifact con `url` del enlace, `file_path` `index.html`, `root` el repositorio y en `files` solo lo que cambió. Sin `capabilities` (se conservan `mcp`, `db`, `user`).
+- **Publicar:** herramienta Artifact con `url` del enlace, `file_path` `index.html`, `root` el repositorio y en `files` solo lo que cambió. Sin `capabilities` se conservan las que tiene (`mcp`, `db`, `user`, `sample`, `dictation`, `tts`); si se pasan, hay que repetirlas todas. Si rechaza por archivos publicados no leídos en la sesión: comparar sha256 de lo publicado (`Artifact read` con `paths`) con el último commit y, si son iguales, pasar esos caminos en `overwrite_unread`. Si `root` queda fuera de la carpeta de trabajo, copiar los archivos al scratchpad y publicar desde ahí.
 - **Datos del usuario:** ArtifactData, colección `data/users/me`, documento `datos`. Leer antes de escribir y usar `update` con `if_version`. Campos: `lugares`, `rutinas`, `ajustes`, `perfil`, `historial`, `aprendizaje`, `consumo`, `saldo`.
 - **Editar código:** parches con Python que comprueban que el texto a reemplazar aparece una sola vez; buscar con `grep -n` en vez de leer todo `app.js`.
 
@@ -31,7 +31,7 @@ description: Mantener y publicar "A Tiempo", la app de SITP/TransMilenio de este
 - Copiar los archivos publicables a una carpeta de prueba y servir esa carpeta.
 - Banderas: `--caps user,db,mcp`, `--cap-config mcp='{"servers":[{"server":"api tm","tools":[...]}]}'`, `--knob mcpFixtures=<json>`, `--knob consent=granted`.
 - Guion por stdin (nunca archivo guardado). Clics con `element.click()` dentro del marco; la ventana real es baja y los clics de ratón se pierden.
-- Ganchos de prueba: `window.ATiempo.cargar(datos)`, `.fijarAhora(iso)`, `.ubicar(lat, lon)`, `.estado()`.
+- Ganchos de prueba: `window.ATiempo.cargar(datos)`, `.fijarAhora(iso)`, `.ubicar(lat, lon)`, `.estado()`, `.jarvis()`, `.charla()`, `.camara()`. Para Jarvis añadir `sample,dictation,tts` a `--caps`.
 - Revisar celular (390x844) y escritorio (1280x800), claro y oscuro, y que no haya errores de consola.
 
 ## Tropiezos ya resueltos
@@ -43,3 +43,6 @@ description: Mantener y publicar "A Tiempo", la app de SITP/TransMilenio de este
 - Cada consulta en vivo cuesta 10 créditos de Croma: siempre al pulsar o con tope diario.
 - Sin GPS garantizado, sin NFC y sin avisos con la app cerrada; la ubicación tiene respaldo manual tocando el mapa.
 - Buses reales (`transmilenio_vehicles`): la posición cae a pocos metros del recorrido, pero `stop_id`/`stop_name` no es fiable (puede estar a 15 km) y `speed_kmh` viene vacío; usar `reported_at` como hora de la lectura.
+- El relieve son teselas terrarium (PNG) en base64 dentro de JSON (`mapa/r/`), servidas por el protocolo `at://r/`; `herramientas/teselas.py` las baja (z9-12).
+- Una expresión de MapLibre con `zoom` solo puede ir en un `interpolate`/`step` de primer nivel; si no, el mapa queda en blanco.
+- Jarvis (`sample`) gasta el uso de Claude del usuario; cada herramienta en vivo que llama gasta créditos de Croma y cuenta para el tope diario.

@@ -423,7 +423,7 @@
         base: { type: 'vector', tiles: ['at://t/{z}/{x}/{y}'], minzoom: 9, maxzoom: 14 },
         relieve: { type: 'raster-dem', tiles: ['at://r/{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 256, minzoom: 9, maxzoom: 12 },
         // paraderos agrupados en burbujas al alejar el mapa
-        paraderos: { type: 'geojson', data: datosMapa.paraderos, cluster: true, clusterMaxZoom: 13, clusterRadius: 42 }, estaciones: geo('estaciones'), rutaCompleta: geo('rutaCompleta'), ruta: geo('ruta'),
+        paraderos: { type: 'geojson', data: datosMapa.paraderos, cluster: true, clusterMaxZoom: 13, clusterRadius: 75 }, estaciones: geo('estaciones'), rutaCompleta: geo('rutaCompleta'), ruta: geo('ruta'),
         rutaParadas: geo('rutaParadas'), buses: geo('buses'), toque: geo('toque'), cinta: geo('cinta'), buses3d: geo('buses3d'), trayectorias: geo('trayectorias')
       },
       layers: [
@@ -484,10 +484,10 @@
         texto('ciudades', 'place', { maxzoom: 12.2, filter: clase(['city', 'town', 'village']),
           layout: { 'text-font': ['Noto Sans Bold'], 'text-size': ['match', ['get', 'class'], 'city', 17, 'town', 13.5, 11.5] }, paint: { 'text-color': c.lugar } }),
 
-        circulo('par-burbujas', 'paraderos', { minzoom: 11.5, maxzoom: 14.3, filter: ['has', 'point_count'], layout: visible(filtros.paraderos),
-          paint: { 'circle-radius': ['step', ['get', 'point_count'], 11, 20, 14, 60, 18], 'circle-color': c.blanco, 'circle-stroke-color': '#1763c6', 'circle-stroke-width': 2, 'circle-opacity': 0.92 } }),
-        { id: 'par-burbujas-n', type: 'symbol', source: 'paraderos', minzoom: 11.5, maxzoom: 14.3, filter: ['has', 'point_count'],
-          layout: { visibility: filtros.paraderos ? 'visible' : 'none', 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-allow-overlap': true },
+        circulo('par-burbujas', 'paraderos', { minzoom: 12.3, maxzoom: 14.3, filter: ['has', 'point_count'], layout: visible(filtros.paraderos),
+          paint: { 'circle-radius': ['step', ['get', 'point_count'], 9, 20, 11.5, 60, 14], 'circle-color': c.blanco, 'circle-stroke-color': '#1763c6', 'circle-stroke-width': 1.6, 'circle-opacity': 0.85, 'circle-stroke-opacity': 0.8 } }),
+        { id: 'par-burbujas-n', type: 'symbol', source: 'paraderos', minzoom: 12.3, maxzoom: 14.3, filter: ['has', 'point_count'],
+          layout: { visibility: filtros.paraderos ? 'visible' : 'none', 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 10, 'text-allow-overlap': true },
           paint: { 'text-color': '#1763c6' } },
         circulo('par-zonal', 'paraderos', { minzoom: 14.3, filter: ['==', ['get', 'k'], 'z'], layout: visible(filtros.paraderos),
           paint: { 'circle-radius': z([14.3, 2.6, 17, 6]), 'circle-color': c.blanco, 'circle-stroke-color': '#1763c6', 'circle-stroke-width': z([14.3, 1.4, 17, 2.4]) } }),
@@ -535,13 +535,19 @@
     teselas.catch(function () {}); letras.catch(function () {});
     maplibregl.addProtocol('at', protocolo);
     var inicio = E.lugares[0] ? [E.lugares[0].lon, E.lugares[0].lat] : [-74.085, 4.66];
-    mapa = new maplibregl.Map({ container: 'mapa', style: estilo(temaOscuro()), center: inicio, zoom: E.lugares[0] ? 12.6 : 11.2,
+    mapa = new maplibregl.Map({ container: 'mapa', style: estilo(temaOscuro()), center: [-74.09, 4.64], zoom: 10,
                                 minZoom: 9.3, maxZoom: 18, maxBounds: CAJA, attributionControl: false, dragRotate: false, pitchWithRotate: false, touchPitch: false });
     mapa.touchZoomRotate.disableRotation();
     mapa.keyboard.disableRotation();
     mapa.on('error', function () { /* teselas fuera de la zona empaquetada: se usa la de menor detalle */ });
     mapa.on('load', function () {
       mapaListo = true; pintarLugares(); marcaYo();
+      // vuelo de entrada: la camara baja desde la sabana hasta tu ubicacion o tu casa, inclinada
+      var destinoVuelo = ubi.lat !== null ? [ubi.lon, ubi.lat] : (E.lugares[0] ? [E.lugares[0].lon, E.lugares[0].lat] : inicio);
+      if (!activo && linea === null) {
+        if (pocoMovimiento()) mapa.jumpTo({ center: destinoVuelo, zoom: 12.8, pitch: 45 });
+        else mapa.flyTo({ center: destinoVuelo, zoom: 12.8, pitch: 45, duration: 2600, curve: 1.5 });
+      }
       if (activo) dibujarTrayecto(activo.tr, activo.desde, activo.hasta, true, activo.v);
       else if (linea !== null && lineaInfo) dibujarLinea(linea, lineaInfo.sinServicio ? null : lineaInfo);
     });
@@ -560,7 +566,7 @@
     mapa.on('movestart', function () { if (propio) return; moviendoMapa = true; clearTimeout(esperaNitidez); if (nitido !== fluido) ponerNitidez(fluido); });
     mapa.on('moveend', function () {
       if (propio) return;
-      moviendoMapa = false; revisarTerreno();
+      moviendoMapa = false; revisarTerreno(); marcar3d();
       clearTimeout(esperaNitidez);
       if (nitido !== fluido) esperaNitidez = setTimeout(function () { if (!moviendoMapa) ponerNitidez(nitido); }, 250);
     });
@@ -1571,7 +1577,7 @@
     });
     if (!base) { c.appendChild(cabecera('A Tiempo')); c.appendChild(espera('Cargando la red de transporte…')); return; }
     ({ hoy: vistaHoy, ruta: vistaRuta, toque: vistaToque, buscar: vistaBuscar, rutinas: vistaRutinas, rutina: vistaRutina,
-       ajustes: vistaAjustes, lugar: vistaLugar, linea: vistaLinea, rutas: vistaRutas, destino: vistaDestino }[vista] || vistaHoy)(c);
+       ajustes: vistaAjustes, lugar: vistaLugar, linea: vistaLinea, rutas: vistaRutas, destino: vistaDestino, jarvis: vistaJarvis }[vista] || vistaHoy)(c);
     c.scrollTop = arriba;
   }
 
@@ -1595,6 +1601,285 @@
       h('span', { class: 'icono-lugar' + (gris ? ' gris' : '') }, icono(nombreIcono)), h('span', { class: 'corta', text: texto }));
   }
   function abrirRutas() { rutasFiltro.texto = ''; ir('rutas'); if (!esAncho()) fijarPanel('max'); }
+
+  /* ---------- Jarvis: controla tus rutas conversando (capacidades sample, dictation y tts) ---------- */
+
+  var muestra = null, dictado = null, voz = null;
+  var charla = { turnos: [], ocupado: false, ctl: null, parcial: '', estado: '', borrador: '', escuchando: false, dictadoBase: '', burbuja: null, hablar: false };
+  try { charla.hablar = localStorage.getItem('atiempo.voz') === '1'; } catch (e) { /* sin almacenamiento */ }
+  function iniciarJarvis() {
+    if (!window.claude || !window.claude.use) return;
+    window.claude.use('sample').then(function (s) { muestra = s; $('c-jarvis').hidden = !s; }, function () { /* sin Claude */ });
+    window.claude.use('tts').then(function (t) { voz = t; }, function () { /* sin voz */ });
+    window.claude.use('dictation').then(function (d) {
+      dictado = d;
+      if (!d) return;
+      function escribir(texto) { charla.borrador = texto; var e = $('jarvis-texto'); if (e) e.value = texto; }
+      d.onPartial(function (x) { escribir((charla.dictadoBase ? charla.dictadoBase + ' ' : '') + x.text); });
+      d.onFinal(function (x) { charla.dictadoBase = ((charla.dictadoBase || '') + ' ' + x.text).trim(); escribir(charla.dictadoBase); });
+      d.onState(function (x) {
+        var antes = charla.escuchando;
+        charla.escuchando = x.state === 'listening';
+        if (antes && !charla.escuchando) {          // al terminar de hablar se envia solo
+          var texto = (charla.dictadoBase || '').trim();
+          charla.dictadoBase = '';
+          if (texto) { charla.borrador = ''; preguntarJarvis(texto); return; }
+        }
+        if (vista === 'jarvis') pintar();
+      });
+    }, function () { /* sin dictado */ });
+  }
+  function abrirJarvis() { ir('jarvis'); if (!esAncho()) fijarPanel('max'); }
+  function alternarDictado() {
+    if (!dictado) return;
+    if (charla.escuchando) { dictado.stop().catch(function () { /* nada */ }); return; }
+    charla.dictadoBase = (charla.borrador || '').trim();
+    dictado.start().catch(function (e) { charla.escuchando = false; if (e && e.code === 'not_granted') dictado = null; if (vista === 'jarvis') pintar(); });
+  }
+  function progreso(texto) { charla.estado = texto; var e = $('jarvis-estado'); if (e) e.textContent = texto; }
+  function esperar(condicion, ms) {
+    return new Promise(function (listo) {
+      var ini = Date.now();
+      (function mirar() { if (condicion()) listo(true); else if (Date.now() - ini > ms) listo(false); else setTimeout(mirar, 300); })();
+    });
+  }
+  /* Lugar guardado, "mi ubicacion", estacion o paradero a partir de un nombre */
+  function refLugar(texto) {
+    var q = sinTildes(String(texto || '').trim());
+    if (!q) return null;
+    if (/(mi ubicacion|aqui|donde estoy)/.test(q)) return miPunto();
+    var sinon = { u: ['u', 'la u', 'universidad'], casa: ['casa', 'mi casa'], trabajo: ['trabajo', 'el trabajo', 'oficina'] }, i;
+    for (i = 0; i < E.lugares.length; i++) {
+      var l = E.lugares[i], n = sinTildes(l.nombre);
+      if (n === q || q.indexOf(n) >= 0 || (q.length > 3 && n.indexOf(q) >= 0) || (sinon[l.id] && sinon[l.id].indexOf(q) >= 0)) return { tipo: 'lugar', id: l.id };
+    }
+    var x = refParadero(q);
+    if (!x) return null;
+    if (x.e !== undefined) return { tipo: 'punto', lat: base.est.lat[x.e] / 1e5, lon: base.est.lon[x.e] / 1e5, nombre: base.est.nom[x.e] };
+    return { tipo: 'punto', lat: red.lat[x.i], lon: red.lon[x.i], nombre: base.par.nom[x.i] };
+  }
+  function refParadero(texto) {
+    var q = sinTildes(String(texto || '').trim()), mejor = null;
+    if (q.length < 2) return null;
+    for (var i = 0; i < indice.length; i++) {
+      var x = indice[i];
+      if (x.tipo === 'ruta' || x.t.indexOf(q) < 0) continue;
+      var p = x.t.indexOf(q) === 0 ? 0 : 1;
+      if (!mejor || p < mejor.p || (p === mejor.p && x.tipo === 'estacion' && mejor.x.tipo !== 'estacion')) mejor = { p: p, x: x };
+      if (mejor.p === 0 && mejor.x.tipo === 'estacion') break;
+    }
+    return mejor ? mejor.x : null;
+  }
+  function rutaPorCodigo(cod) {
+    var q = String(cod || '').trim().toUpperCase().replace(/\s+/g, ''), r;
+    for (r = 0; r < base.rut.cod.length; r++) if (String(base.rut.cod[r]).toUpperCase() === q) return r;
+    for (r = 0; r < base.rut.cod.length; r++) if (String(base.rut.c1[r]).toUpperCase() === q || String(base.rut.c2[r]).toUpperCase() === q) return r;
+    return -1;
+  }
+  function resumenOpcion(tr) {
+    var buses = tr.tramos.filter(function (t) { return t.tipo === 'bus'; }), traf = resumenTrafico(tr);
+    return { sale: hora12(tr.sale), llega: hora12(tr.llega), minutos: Math.round(tr.duracion / 60), rutas: buses.map(function (t) { return t.letrero; }),
+             sube_en: buses[0] ? base.par.nom[buses[0].sube] : null, transbordos: tr.transbordos, caminata_min: Math.round(tr.caminataSeg / 60),
+             trafico: traf ? traf.nivel + (traf.extra >= 60 ? ' +' + Math.round(traf.extra / 60) + ' min' : '') : null };
+  }
+  function mostrarRuta(r) {
+    if (linea !== r) pararBuses();
+    if (activo) { activo = null; quitarSenales(); }
+    linea = r; lineaSel = null; lineaInfo = null;
+    var dia = servicio();
+    return motor.pedir({ orden: 'resumen', tipo: dia.tipo, ruta: r, t: dia.seg }).then(function (info) {
+      info.tipo = dia.tipo; lineaInfo = info; lineaSel = info.clave;
+      dibujarLinea(r, info.sinServicio ? null : info);
+      return info;
+    });
+  }
+  function herramientasJarvis() {
+    var texto = { type: 'string' };
+    return [
+      { name: 'proximos_viajes', description: 'Los próximos viajes de las rutinas de la persona: a qué hora salir, en qué ruta, a qué hora llega y si hay algo fuera de lo común. Gratis.',
+        execute: function () {
+          return viajes.slice(0, 4).map(function (v) {
+            var plan = v.estado === 'listo' ? planVigente(v) : null, ok = plan && !plan.sinBus;
+            return { rutina: v.rutina.nombre, dia: nombreDia(v), meta: (v.rutina.modo === 'llegar' ? 'llegar ' : 'salir ') + hora12(v.objetivo),
+                     estado: !plan ? (v.estado || 'calculando') : (plan.sinBus ? 'ya no hay bus' : 'listo'), sal_a_las: ok ? hora12(plan.sale) : null,
+                     faltan_min: ok ? Math.round(plan.falta / 60) : null, llegas: ok ? hora12(plan.llega) : null, no_llega_a_tiempo: ok && v.rutina.modo === 'llegar' && plan.llega > v.objetivo,
+                     opcion: ok ? resumenOpcion(plan.tr) : null, datos: ok ? (plan.fuente === 'vivo' ? 'en vivo' : 'horario oficial') : null,
+                     aviso: v.vivo && v.vivo.anomalia ? 'el bus va ' + Math.round(v.vivo.retraso / 60) + ' min tarde, fuera de lo normal' : null };
+          });
+        } },
+      { name: 'planear_viaje', description: 'Calcula las mejores opciones en bus entre dos lugares y dibuja la mejor en el mapa. Gratis.',
+        inputSchema: { type: 'object', properties: { hasta: { type: 'string', description: 'Destino: lugar guardado (Casa, Universidad, Trabajo), estación o paradero' },
+          desde: { type: 'string', description: 'Origen; si se omite, la ubicación del dispositivo o Casa' }, hora: { type: 'string', description: 'HH:MM en 24 horas; si se omite, ahora' },
+          modo: { type: 'string', enum: ['salir', 'llegar'] } }, required: ['hasta'] },
+        execute: function (x) {
+          var hRef = refLugar(x && x.hasta);
+          if (!hRef) throw new Error('No encontré "' + (x && x.hasta) + '". Usa un lugar guardado, una estación o un paradero.');
+          var dRef = x.desde ? refLugar(x.desde) : origenPorDefecto();
+          if (!dRef) throw new Error('No encontré el origen "' + x.desde + '".');
+          var a = resolver(dRef), b = resolver(hRef), s = servicio(), modo = x.modo === 'llegar' ? 'llegar' : 'salir', t = s.seg;
+          if (x.hora && /^\d{1,2}:\d{2}$/.test(String(x.hora).trim())) { t = hhmmASeg(String(x.hora).trim()); if (t < 3 * 3600) t += 86400; }
+          progreso('Buscando la mejor ruta…');
+          return planearConRespaldo({ orden: 'planear', tipo: s.tipo, consulta: consulta(a, b, modo, modo === 'llegar' ? t - E.ajustes.margen * 60 : t, s.tipo) }).then(function (res) {
+            if (res.trayectos[0]) dibujarTrayecto(res.trayectos[0], a, b);
+            return { desde: a.nombre, hasta: b.nombre, opciones: res.trayectos.slice(0, 3).map(resumenOpcion), sin_ruta_directa: !!res.ampliado,
+                     motivo_sin_ruta: res.trayectos.length ? null : (res.motivo === 'sin_paraderos' ? 'no hay paraderos cerca' : 'no hay servicio a esa hora') };
+          });
+        } },
+      { name: 'ver_ruta', description: 'Muestra una ruta completa en el mapa en 3D y dice cuánto tarda, primera y última salida y cada cuánto pasa. Gratis.',
+        inputSchema: { type: 'object', properties: { codigo: texto }, required: ['codigo'] },
+        execute: function (x) {
+          var r = rutaPorCodigo(x && x.codigo);
+          if (r < 0) throw new Error('No hay una ruta con el código ' + (x && x.codigo) + '.');
+          progreso('Abriendo la ruta ' + base.rut.cod[r] + '…');
+          return mostrarRuta(r).then(function (info) {
+            if (info.sinServicio) return { ruta: base.rut.cod[r], nombre: base.rut.nom[r], sin_servicio_hoy: true };
+            return { ruta: base.rut.cod[r], nombre: base.rut.nom[r], hacia: base.par.nom[info.paraderos[info.paraderos.length - 1]], minutos: Math.round(info.dur / 60),
+                     primera: info.primera !== null ? hora12(info.primera) : null, ultima: info.ultima !== null ? hora12(info.ultima) : null,
+                     pasa_cada_min: info.cada ? Math.round(info.cada / 60) : null, paraderos: info.paraderos.length };
+          });
+        } },
+      { name: 'buses_en_vivo', description: 'Ubica en el mapa los buses de una ruta en tiempo real y los sigue cada 2 minutos. Gasta una consulta de Croma.',
+        inputSchema: { type: 'object', properties: { codigo: texto }, required: ['codigo'] },
+        execute: function (x) {
+          var r = rutaPorCodigo(x && x.codigo);
+          if (r < 0) throw new Error('No hay una ruta con el código ' + (x && x.codigo) + '.');
+          if (!mcp) throw new Error('El conector de Croma no está disponible en esta vista.');
+          if (!quedanConsultas(1)) throw new Error('Se acabó el tope de consultas en vivo de hoy (se cambia en Ajustes).');
+          progreso('Buscando los buses de la ' + base.rut.cod[r] + '…');
+          return mostrarRuta(r).then(function () {
+            if (!filtros.buses) { filtros.buses = true; pintarFiltros(); }
+            refrescarBuses(true);
+            return esperar(function () { return flota.clave === String(r) && flota.cuenta > 0; }, 12000);
+          }).then(function (ok) {
+            if (!ok) throw new Error('Croma no respondió a tiempo.');
+            var vel = busesVivo.vel && Date.now() - busesVivo.vel.en < 90000 ? busesVivo.vel.kmh : null;
+            return { ruta: base.rut.cod[r], buses_reportando: Object.keys(flota.buses).length, velocidad_media_kmh: vel, nota: 'Quedan en el mapa y se actualizan cada 2 minutos.' };
+          });
+        } },
+      { name: 'alertas_ruta', description: 'Desvíos, cierres y retrasos oficiales vigentes de una ruta, con su causa. Gasta una consulta de Croma.',
+        inputSchema: { type: 'object', properties: { codigo: texto }, required: ['codigo'] },
+        execute: function (x) {
+          var r = rutaPorCodigo(x && x.codigo);
+          if (r < 0) throw new Error('No hay una ruta con el código ' + (x && x.codigo) + '.');
+          progreso('Revisando alertas de la ' + base.rut.cod[r] + '…');
+          return llamar('transmilenio_alerts', { route: base.rut.cod[r] }).then(function (d) {
+            var lista = (d.alerts || []).filter(function (al) { var rs = al.routes || []; return !rs.length || rs.some(function (y) { return String(y.route_id) === base.rut.id[r]; }); });
+            return { ruta: base.rut.cod[r], alertas: lista.slice(0, 5).map(function (al) {
+              return { efecto: EFECTOS[claveEfecto(al.effect)] || 'Aviso', causa: CAUSAS[claveEfecto(al.cause)] || null, titulo: String(al.header || '').slice(0, 140), detalle: String(al.description || '').slice(0, 200) };
+            }) };
+          }, function (e) { throw new Error(textoError(e)); });
+        } },
+      { name: 'llegadas_paradero', description: 'Qué buses llegan en los próximos minutos a un paradero o estación, en vivo. Gasta una consulta de Croma.',
+        inputSchema: { type: 'object', properties: { paradero: texto }, required: ['paradero'] },
+        execute: function (x) {
+          var p = refParadero(x && x.paradero), i;
+          if (!p) throw new Error('No encontré el paradero "' + (x && x.paradero) + '".');
+          if (p.e !== undefined) { for (i = 0; i < base.par.est.length; i++) if (base.par.est[i] === p.e) break; } else i = p.i;
+          if (i === undefined || i >= base.par.id.length) throw new Error('Ese lugar no tiene paraderos.');
+          progreso('Consultando llegadas en ' + base.par.nom[i] + '…');
+          resaltar(red.lon[i], red.lat[i]); volar(red.lon[i], red.lat[i], 15.5);
+          return llamar('transmilenio_stop_arrivals', { stop_id: base.par.id[i], limit: 10 }).then(function (d) {
+            return { paradero: base.par.nom[i], llegadas: (d.arrivals || []).slice(0, 8).map(function (a) { return { ruta: a.route_code || '', destino: a.route_name || '', en_min: a.minutes_away }; }) };
+          }, function (e) { throw new Error(textoError(e)); });
+        } }
+    ];
+  }
+  function instruccionesJarvis(pregunta) {
+    var s = servicio(), l = [];
+    l.push('Eres Jarvis, el asistente de la app A Tiempo para moverse en SITP y TransMilenio en Bogotá. Tu único trabajo es ayudar a la persona a controlar sus rutas.');
+    l.push('Responde en español claro y directo, sin emojis, en máximo 4 frases. Escribe las horas en formato de 12 horas, como 5:20 p. m.');
+    l.push('Usa las herramientas para tener datos reales; nunca inventes horarios, rutas ni buses. Si una herramienta falla, dilo en una frase.');
+    l.push('buses_en_vivo, alertas_ruta y llegadas_paradero gastan créditos: úsalas solo si la persona pide algo en vivo. Para saber a qué hora salir usa proximos_viajes o planear_viaje.');
+    l.push('Ahora: ' + textoReloj() + ', ' + fechaLarga(s.fecha) + ' (' + (s.tipo === 'habil' ? 'día hábil' : s.tipo === 'sabado' ? 'sábado' : 'domingo o festivo') + ').');
+    l.push('Lugares guardados: ' + (E.lugares.map(function (x) { return x.nombre; }).join(', ') || 'ninguno') + '.');
+    l.push('Rutinas: ' + (E.rutinas.map(function (r) {
+      return r.nombre + ' (' + ((lugar(r.desde) || {}).nombre || '?') + ' a ' + ((lugar(r.hasta) || {}).nombre || '?') + ', ' + (r.modo === 'llegar' ? 'llegar ' : 'salir ') + hora12(hhmmASeg(r.hora)) + ', ' + textoDias(r.dias) + ')';
+    }).join('; ') || 'ninguna') + '.');
+    l.push('Ubicación del dispositivo: ' + (miPunto() ? 'activa' : 'no disponible; el origen por defecto es Casa') + '. Consultas en vivo que quedan hoy: ' + Math.max(0, E.ajustes.topeDiario - E.consumo.vivoHoy) + '.');
+    var hist = charla.turnos.slice(-7, -1).map(function (t) { return (t.quien === 'yo' ? 'Persona: ' : 'Jarvis: ') + t.texto; });
+    if (hist.length) l.push('\nConversación reciente:\n' + hist.join('\n'));
+    l.push('\nPregunta de la persona: ' + pregunta);
+    return l.join('\n');
+  }
+  function preguntarJarvis(texto) {
+    texto = String(texto || '').trim();
+    if (!texto || charla.ocupado || !muestra) return;
+    if (vista !== 'jarvis') abrirJarvis();
+    charla.turnos.push({ quien: 'yo', texto: texto });
+    charla.ocupado = true; charla.parcial = ''; charla.estado = ''; charla.borrador = '';
+    charla.ctl = new AbortController();
+    pintar();
+    muestra(instruccionesJarvis(texto), { cache: false, modelTier: 'quick', signal: charla.ctl.signal, tools: herramientasJarvis(),
+      onText: function (x) { charla.parcial = x.text; if (charla.burbuja) charla.burbuja.textContent = x.text; }
+    }).then(function (r) {
+      var t = (r && r.text || '').trim() || 'No tengo respuesta para eso.';
+      charla.turnos.push({ quien: 'j', texto: t });
+      if (charla.hablar && voz) voz.speak(t.slice(0, 2000)).catch(function () { /* sin voz */ });
+    }).catch(function (e) {
+      var codigo = e && e.code, t;
+      if (codigo === 'not_granted') { t = 'Para usar Jarvis, permite que esta página use Claude.'; }
+      else if (codigo === 'cancelled') t = (e.text || '').trim() || 'Detenido.';
+      else if (codigo === 'rate_limited') t = 'Jarvis está ocupado o llegaste a tu límite de uso. Intenta en un momento.';
+      else t = ((e && e.text) ? e.text.trim() + '\n\n' : '') + 'Jarvis no pudo terminar la respuesta. Intenta de nuevo.';
+      charla.turnos.push({ quien: 'j', texto: t });
+    }).then(function () {
+      charla.ocupado = false; charla.parcial = ''; charla.estado = ''; charla.burbuja = null; charla.ctl = null;
+      if (vista === 'jarvis') pintar();
+    });
+  }
+  function vistaJarvis(c) {
+    c.appendChild(cabecera('Jarvis', volverAHoy));
+    c.appendChild(h('p', { class: 'sub', text: muestra ? 'Pregúntale por tus viajes, rutas y buses en vivo. Usa tu cuenta de Claude; lo vivo gasta créditos de Croma.' : 'Jarvis no está disponible en esta vista.' }));
+    var lista = h('div', { class: 'charla' });
+    if (!charla.turnos.length) {
+      lista.appendChild(h('div', { class: 'sugerencias' }, ['¿A qué hora salgo para mi próximo viaje?', '¿Dónde viene la Z8?', '¿Hay desvíos en mi ruta de hoy?', 'Llévame a la universidad para llegar a las 6:00 p. m.'].map(function (t) {
+        return h('button', { type: 'button', class: 'sugerencia', text: t, onclick: function () { preguntarJarvis(t); } });
+      })));
+    }
+    charla.turnos.forEach(function (t) { lista.appendChild(h('div', { class: 'msg ' + (t.quien === 'yo' ? 'yo' : 'j'), text: t.texto })); });
+    if (charla.ocupado) {
+      charla.burbuja = h('div', { class: 'msg j pensando', text: charla.parcial || 'Pensando…' });
+      lista.appendChild(charla.burbuja);
+      lista.appendChild(h('div', { class: 'mini', id: 'jarvis-estado', text: charla.estado }));
+    }
+    c.appendChild(lista);
+    var entrada = h('input', { class: 'entrada', id: 'jarvis-texto', type: 'text', autocomplete: 'off', enterkeyhint: 'send', placeholder: charla.escuchando ? 'Te escucho…' : 'Escribe o habla', value: charla.borrador,
+      oninput: function (e) { charla.borrador = e.target.value; } });
+    c.appendChild(h('form', { class: 'chat-form', onsubmit: function (e) { e.preventDefault(); preguntarJarvis(entrada.value); } },
+      entrada,
+      dictado && !charla.ocupado ? h('button', { type: 'button', class: 'redondo' + (charla.escuchando ? ' escuchando' : ''), 'aria-label': charla.escuchando ? 'Dejar de escuchar' : 'Hablar', onclick: alternarDictado }, icono('mic')) : null,
+      charla.ocupado ? h('button', { type: 'button', class: 'boton claro chico', onclick: function () { if (charla.ctl) charla.ctl.abort(); } }, 'Detener')
+        : h('button', { type: 'submit', class: 'boton principal chico', disabled: !muestra }, 'Enviar')));
+    if (voz) c.appendChild(h('label', { class: 'fila mini', style: 'margin-top:8px' }, h('input', { type: 'checkbox', checked: charla.hablar, onchange: function (e) {
+      charla.hablar = e.target.checked;
+      try { localStorage.setItem('atiempo.voz', charla.hablar ? '1' : '0'); } catch (x) { /* sin almacenamiento */ }
+      if (!charla.hablar) voz.stop();
+    } }), 'Leer las respuestas en voz alta'));
+    setTimeout(function () { var k = $('contenido'); k.scrollTop = k.scrollHeight; if (esAncho() && !charla.ocupado) { try { entrada.focus(); } catch (e) { /* nada */ } } }, 0);
+  }
+
+  /* ---------- Waze, 3D y vuelo de entrada ---------- */
+
+  function enlaceWaze(lon, lat) {
+    return h('a', { class: 'boton claro chico', href: 'https://www.waze.com/ul?ll=' + lat.toFixed(5) + '%2C' + lon.toFixed(5) + '&zoom=14', target: '_blank', rel: 'noopener noreferrer' }, icono('trafico'), 'Tráfico en Waze');
+  }
+  function centroTramo(t) { var p = red.pat[t.pat], q = p.s[Math.round((t.posSube + t.posBaja) / 2)]; return [red.lon[q], red.lat[q]]; }
+  function alternar3d() {
+    if (!mapa) return;
+    var en3d = mapa.getPitch() > 5;
+    mapa.easeTo({ pitch: en3d ? 0 : 50, bearing: 0, duration: pocoMovimiento() ? 0 : 700 });
+  }
+  function marcar3d() { var b = $('c-3d'); if (b && mapa) { var en3d = mapa.getPitch() > 5; b.firstChild.textContent = en3d ? '2D' : '3D'; b.setAttribute('aria-label', en3d ? 'Ver el mapa plano' : 'Ver el mapa en 3D'); } }
+  function vivoDeViaje(v) {
+    var plan = planVigente(v);
+    if (!plan || !plan.tr) { tostada('Ese viaje aún no tiene ruta.'); return; }
+    var a = lugar(v.rutina.desde), b = lugar(v.rutina.hasta), conBuses = quedanConsultas(2);
+    consultarVivo(v, false);
+    if (!conBuses) { tostada('Tu tope de hoy solo alcanza para las llegadas. Súbelo en Ajustes para ver los buses en el mapa.'); return; }
+    if (!filtros.buses) { filtros.buses = true; pintarFiltros(); }
+    if (activo && activo.v === v && !activo.varios) refrescarBuses(true); else dibujarTrayecto(plan.tr, a, b, false, v);
+    if (!esAncho()) fijarPanel('min');
+  }
 
   /* ----- pantalla "A donde vas?" al abrir la app ----- */
 
@@ -1823,15 +2108,7 @@
 
     t.appendChild(h('div', { class: 'botones' },
       boton('Mapa', 'principal chico', function () { dibujarTrayecto(tr, a, b, false, v); if (!esAncho()) fijarPanel('min'); }, 'mapa'),
-      boton('En vivo', 'claro chico', function () {
-        // un toque: llegadas al paradero, ruta iluminada y buses que vienen hacia ti
-        var conBuses = quedanConsultas(2);
-        consultarVivo(v, false);
-        if (!conBuses) { tostada('Tu tope de hoy solo alcanza para las llegadas. Súbelo en Ajustes para ver los buses en el mapa.'); return; }
-        if (!filtros.buses) { filtros.buses = true; pintarFiltros(); }
-        if (activo && activo.v === v && !activo.varios) refrescarBuses(true); else dibujarTrayecto(tr, a, b, false, v);
-        if (!esAncho()) fijarPanel('min');
-      }, 'vivo'),
+      boton('En vivo', 'claro chico', function () { vivoDeViaje(v); }, 'vivo'),
       boton(v.abierto ? 'Menos' : 'Más', 'claro chico', function () { v.abierto = !v.abierto; pintar(); })));
     if (v.abierto) {
       if (plan.fuente === 'vivo') t.appendChild(h('p', { class: 'mini', style: 'margin:12px 0 -4px', text: 'El detalle de abajo sigue el horario oficial.' }));
@@ -1841,6 +2118,7 @@
         boton('Otras opciones', 'claro chico', function () { abrirRuta({ tipo: 'lugar', id: a.id }, { tipo: 'lugar', id: b.id }, { modo: v.rutina.modo, hora: v.rutina.hora, rutina: v.rutina.id, fecha: v.fecha, tipo: v.tipo }); }),
         boton('Alertas de la ruta', 'claro chico', function () { revisarAlertasViaje(v, false); }, 'alerta'),
         boton('Buses que me sirven', 'claro chico', function () { verVarios(v.res.trayectos, a, b); }, 'vivo'),
+        (function () { var cw = centroTramo(bus); return enlaceWaze(cw[0], cw[1]); })(),
         v.registrado ? null : boton('Tomé este bus', 'claro chico', function () { registrarViaje(v, plan); }, 'check')));
     }
     return t;
@@ -2245,7 +2523,8 @@
       h('div', { class: 'dato' }, h('small', { text: 'Paraderos' }), h('b', { text: String(info.paraderos.length) }))));
     c.appendChild(h('div', { class: 'botones' },
       boton(plano ? 'Ver en 3D' : 'Vista plana', 'claro chico', function () { plano = !plano; dibujarLinea(r, info); pintar(); }, plano ? '3d' : 'mapa'),
-      boton('Buses en vivo', 'claro chico', function () { busesDeRuta(r); }, 'vivo')));
+      boton('Buses en vivo', 'claro chico', function () { busesDeRuta(r); }, 'vivo'),
+      (function () { var q = info.paraderos[Math.floor(info.paraderos.length / 2)]; return enlaceWaze(red.lon[q], red.lat[q]); })()));
     c.appendChild(h('div', { class: 'seccion', text: 'Paraderos y minutos desde el inicio' }));
     var lista = h('div', { class: 'lista' });
     info.paraderos.forEach(function (i, q) {
@@ -2588,7 +2867,18 @@
       if (ubi.estado === 'ok') { volar(ubi.lon, ubi.lat, 15.5); if (!ubi.manual) pedirUbicacion(false); }
       else pedirUbicacion(true);
     });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && soloMapa()) verSoloMapa(false); });
+    $('c-jarvis').addEventListener('click', abrirJarvis);
+    $('c-3d').addEventListener('click', alternar3d);
+    // atajos: J Jarvis, V en vivo del proximo viaje, R todas las rutas, Esc volver
+    document.addEventListener('keydown', function (e) {
+      var t = e.target, escribiendo = t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+      if (e.key === 'Escape') { if (soloMapa()) verSoloMapa(false); else if (base && vista !== 'hoy' && vista !== 'destino') volverAHoy(); return; }
+      if (escribiendo || e.ctrlKey || e.metaKey || e.altKey || !$('inicio').hidden || !base) return;
+      var k = String(e.key || '').toLowerCase();
+      if (k === 'j' && muestra) { e.preventDefault(); abrirJarvis(); }
+      else if (k === 'r') { e.preventDefault(); abrirRutas(); }
+      else if (k === 'v' && viajes[0] && viajes[0].tr) { e.preventDefault(); vivoDeViaje(viajes[0]); }
+    });
     window.addEventListener('online', sincronizarHora);
     window.addEventListener('offline', function () { reloj.estado = 'sin'; pintarSiHoy(); });
     $('elegir-cancelar').addEventListener('click', function () { eligiendo = null; $('elegir').hidden = true; $('arriba').hidden = false; fijarPanel('medio'); });
@@ -2625,6 +2915,7 @@
       pintar();
       iniciarNube();
       iniciarVivo();
+      iniciarJarvis();
       iniciarUbicacion();
       setInterval(tic, 20000);
     }).catch(function () {
@@ -2640,6 +2931,9 @@
     fijarAhora: function (iso) { desfase = iso ? new Date(iso).getTime() - Date.now() - reloj.corr : 0; planearViajes(true); pintar(); if (mapa && mapa.setSky && mapaListo) mapa.setSky(cielo(temaOscuro())); },
     cargar: function (datos) { E = normalizar(datos); pintarEntrada(); pintarLugares(); planearViajes(true); pintar(); },
     ubicar: function (lat, lon) { fijarUbicacion(lat, lon, 20, false); },
+    jarvis: function (t) { preguntarJarvis(t); },
+    camara: function (c, z, p) { if (mapa) mapa.jumpTo({ center: c, zoom: z, pitch: p || 0 }); },
+    charla: function () { return { turnos: charla.turnos.slice(), ocupado: charla.ocupado, hay: !!muestra, dictado: !!dictado, voz: !!voz }; },
     estado: function () { return { vista: vista, viajes: viajes.map(function (v) { return { estado: v.estado, sale: v.tr && v.tr.sale, llega: v.tr && v.tr.llega }; }), historial: E.historial.length, aprendizaje: Object.keys(E.aprendizaje).length, ubicacion: ubi.estado, buses: Object.keys(flota.buses).length, bus0: datosMapa.buses.features[0] ? datosMapa.buses.features[0].geometry.coordinates : null, cubos: datosMapa.buses3d.features.length, enMapa: datosMapa.buses.features.length, terreno: !!(mapa && mapa.getTerrain && mapa.getTerrain()), cielo: mapa && mapa.getSky ? (mapa.getSky() || {})['horizon-color'] : null, sol: Math.round(elevacionSol(ahora())), etiquetas: datosMapa.buses.features.map(function (f) { return f.properties.etq + '/' + f.properties.nivel; }), trayectorias: datosMapa.trayectorias.features.length, lineas: datosMapa.ruta.features.length, inclinacion: mapa ? Math.round(mapa.getPitch()) : null, cinta: datosMapa.cinta.features.length, saldo: E.saldo }; }
   };
 
