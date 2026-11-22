@@ -163,6 +163,7 @@ button.sello { border: 0; }
 .entrada { width: 100%; height: 46px; padding: 0 13px; border: 1.5px solid transparent; border-radius: 13px; background: var(--superficie2); color: var(--texto); font-size: 16px; }
 .entrada:focus { outline: none; border-color: var(--foco); }
 select.entrada { appearance: none; -webkit-appearance: none; }
+textarea.entrada { height:auto; min-height:84px; padding:10px 12px; resize:vertical; font:inherit; line-height:1.4; margin:8px 0; }
 .segmentado { display: flex; padding: 3px; border-radius: 12px; background: var(--superficie2); gap: 2px; }
 .segmentado button { flex: 1; min-width: 0; height: 34px; border: 0; border-radius: 9px; background: none; color: var(--texto2); font-size: 13.5px; font-weight: 650; white-space: nowrap; }
 .segmentado button[aria-pressed="true"] { background: var(--superficie); color: var(--texto); box-shadow: var(--sombra-corta); }
@@ -304,6 +305,7 @@ select.entrada { appearance: none; -webkit-appearance: none; }
 #app.solo-mapa[data-panel] #atribucion { display: block; }
 
 .leyenda { position: absolute; left: var(--izq); bottom: calc(var(--pestanas) + var(--panel-px) + 34px); z-index: 4; display: flex; gap: 10px; padding: 6px 10px; border-radius: 10px; background: var(--superficie); box-shadow: var(--sombra-corta); font-size: 11.5px; font-weight: 650; transition: bottom .28s cubic-bezier(.2, .8, .2, 1); }
+@media (max-width: 899px) { .leyenda { right: 66px; flex-wrap: wrap; row-gap: 4px; } }
 .leyenda span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .leyenda i { width: 10px; height: 10px; border-radius: 50%; }
 @media (min-width: 900px) { .leyenda { left: 432px; bottom: 30px; } }
@@ -373,7 +375,8 @@ a.boton { text-decoration: none; }
   .yo-halo { display: none; }
 }
 /* La línea turquesa identifica acciones de viaje sin sustituir los colores de los sistemas. */
-:root { --accion:#00695d; --tinta-accion:#fff; --borde-viaje:color-mix(in srgb,var(--accion) 35%,var(--linea)); }
+:root { --accion:#00695d; --tinta-accion:#fff; --borde-viaje:var(--linea); }
+@supports (color:color-mix(in srgb,red 50%,blue)) { :root { --borde-viaje:color-mix(in srgb,var(--accion) 35%,var(--linea)); } }
 :root[data-theme="dark"] { --accion:#87dfc8; --tinta-accion:#092c27; }
 @media (prefers-color-scheme:dark) {
   :root:not([data-theme="light"]) { --accion:#87dfc8; --tinta-accion:#092c27; }
@@ -399,7 +402,7 @@ a.boton { text-decoration: none; }
 .metricas small { font-size:12px; color:var(--texto2); }
 .metricas b { font-size:15px; font-variant-numeric:tabular-nums; }
 .detalle-opcion { padding:0 6px 14px; }
-.saldo-viaje { margin:14px 0; border:1px solid var(--borde-viaje); border-radius:12px; padding:12px; background:color-mix(in srgb,var(--accion) 5%,var(--superficie)); }
+.saldo-viaje { margin:14px 0; border:1px solid var(--borde-viaje); border-radius:12px; padding:12px; background:var(--superficie); background:color-mix(in srgb,var(--accion) 5%,var(--superficie)); }
 .saldo-viaje .mini { margin:4px 0; }
 .saldo-viaje .boton { margin-top:5px; }
 @media (min-width:900px) {

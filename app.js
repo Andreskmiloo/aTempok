@@ -52,7 +52,7 @@
   var ubi = { estado: 'nada', lat: null, lon: null, precision: null, en: 0, marca: null, vigia: null, manual: false };
   var cerca = { clave: '', en: 0, lista: null, pidiendo: false, vivo: null };
   var senales = [];                              // marcadores de lo que pasa en la ruta dibujada
-  var lineaInfo = null, lineaSel = null, plano = false;   // ruta vista completa
+  var lineaInfo = null, lineaSel = null, plano = false, lineaDibujo = null;   // ruta vista completa
   var perfiles = {};                             // trafico por hora de cada rutina (para "Lo que he aprendido")
   var rutasFiltro = { texto: '', sis: -1 };
   var guia = null;
@@ -164,6 +164,13 @@
   function diaSemana(fecha) { var p = partes(fecha); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); }
   function fechaLarga(fecha) { var p = partes(fecha); return DIAS[diaSemana(fecha)] + ' ' + p[2] + ' de ' + MESES[p[1] - 1]; }
   function esAncho() { return window.innerWidth >= 900; }
+  // iPhone, iPad y equipos con poca memoria: mapa sin relieve y sin cambios de nitidez (Safari se traba o recarga la pagina)
+  var VERSION = 'Piloto 1';
+  var LIVIANO = (function () {
+    try { var forzado = localStorage.getItem('atiempo.liviano'); if (forzado === '1') return true; if (forzado === '0') return false; } catch (e) { /* sin almacenamiento */ }
+    var ua = navigator.userAgent || '';
+    return /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || (navigator.deviceMemory > 0 && navigator.deviceMemory < 4);
+  })();
   function pocoMovimiento() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
 
   /* ---------- datos de la persona ---------- */
@@ -210,6 +217,41 @@
     nube.ocupada = true;
     nube.doc.set(JSON.parse(JSON.stringify(E))).catch(function () { /* sin permiso de escritura: queda en el navegador */ })
       .then(function () { nube.ocupada = false; if (nube.pendiente) { nube.pendiente = false; programarNube(); } });
+  }
+  /* Comentarios del piloto: cada persona escribe en su propia carpeta; solo la duena de la app los lee todos */
+  var comentario = { texto: '', estado: '' };
+  function seccionComentarios() {
+    var t = h('div', { class: 'tarjeta' });
+    t.appendChild(h('div', { class: 'fuerte', text: 'Reportar un problema o idea' }));
+    t.appendChild(h('p', { class: 'mini', text: 'Cuéntanos qué falló o qué te gustaría. Se guarda con la pantalla en la que estabas y el tipo de equipo, sin tu ubicación.' }));
+    var area = h('textarea', { class: 'entrada', id: 'comentario-texto', rows: '3', maxlength: '1000', placeholder: 'Ej.: en Rutas el mapa se quedó quieto al tocar 3D', 'aria-label': 'Tu comentario' });
+    area.value = comentario.texto;
+    area.addEventListener('input', function () { comentario.texto = area.value; });
+    t.appendChild(area);
+    if (comentario.estado) t.appendChild(h('p', { class: 'mini ' + (comentario.estado === 'ok' ? 'verde' : 'naranja'), text: comentario.estado === 'ok' ? 'Gracias. Quedó guardado.' : comentario.estado === 'enviando' ? 'Enviando…' : comentario.estado }));
+    t.appendChild(h('div', { class: 'botones' }, boton('Enviar', 'principal chico', enviarComentario, 'check')));
+    return t;
+  }
+  function enviarComentario() {
+    var texto = (comentario.texto || '').trim();
+    if (!texto) { tostada('Escribe primero qué pasó o qué te gustaría.'); return; }
+    if (comentario.estado === 'enviando') return;
+    if (!window.claude || !window.claude.use) { comentario.estado = 'Sin conexión con Claude: no se pudo enviar.'; pintar(); return; }
+    comentario.estado = 'enviando'; pintar();
+    Promise.all([window.claude.use('user'), window.claude.use('db')]).then(function (r) {
+      if (!r[0] || !r[1]) throw { code: 'sin_base' };
+      return r[0].id().then(function (id) {
+        if (!id) throw { code: 'sin_base' };
+        return conLimite(r[1].collection('comentarios/' + id + '/lista').add({
+          texto: texto.slice(0, 1000), vista: vista, version: VERSION, liviano: LIVIANO,
+          equipo: (navigator.userAgent || '').slice(0, 200), ancho: window.innerWidth, en: Date.now() }), 12000);
+      });
+    }).then(function (ref) {
+      if (!ref) throw { code: 'lento' };
+      comentario = { texto: '', estado: 'ok' }; pintar();
+    }).catch(function (e) {
+      comentario.estado = e && e.code === 'lento' ? 'La base no respondió. Inténtalo de nuevo.' : 'No se pudo enviar. Inténtalo de nuevo.'; pintar();
+    });
   }
   function conLimite(promesa, ms) {
     return Promise.race([promesa, new Promise(function (r) { setTimeout(function () { r(null); }, ms); })]);
@@ -287,7 +329,11 @@
       },
       pedir: function (m) {
         if (!w) return enPagina(m);
-        return new Promise(function (si, no) { m.id = ++sec; pendientes[m.id] = { si: si, no: no, m: m }; w.postMessage(m); });
+        return new Promise(function (si, no) {
+          m.id = ++sec; pendientes[m.id] = { si: si, no: no, m: m }; w.postMessage(m);
+          // si el proceso de fondo no responde (Safari con poca memoria), se calcula en la pagina
+          setTimeout(function () { if (pendientes[m.id] && w) { try { w.terminate(); } catch (e) { /* nada */ } caer(); } }, 20000);
+        });
       }
     };
   })();
@@ -295,6 +341,7 @@
   /* ---------- mapa ---------- */
 
   var teselas = null, letras = null, pakoListo = null;
+  var terreno = { programar: function () {}, apagar: function () {} };
   function aBytes(b64) {
     var bin = atob(b64), n = bin.length, a = new Uint8Array(n);
     for (var i = 0; i < n; i++) a[i] = bin.charCodeAt(i);
@@ -314,8 +361,11 @@
     }
     return pakoListo.then(function () { return window.pako.ungzip(bytes).buffer; });
   }
-  function leerJson(ruta) {
-    return fetch(ruta).then(function (r) { if (!r.ok) throw new Error(ruta + ' ' + r.status); return r.json(); });
+  function leerJson(ruta, ms) {
+    var ctl = window.AbortController ? new AbortController() : null, reloj = ctl ? setTimeout(function () { ctl.abort(); }, ms || 25000) : 0;
+    return fetch(ruta, ctl ? { signal: ctl.signal } : undefined)
+      .then(function (r) { if (!r.ok) throw new Error(ruta + ' ' + r.status); return r.json(); })
+      .then(function (d) { clearTimeout(reloj); return d; }, function (e) { clearTimeout(reloj); throw e; });
   }
   function protocolo(pedido) {
     var m = /^at:\/\/t\/(\d+)\/(\d+)\/(\d+)/.exec(pedido.url);
@@ -434,7 +484,7 @@
         { id: 'bosque', type: 'fill', source: 'base', 'source-layer': 'landcover', filter: clase(['wood']), paint: { 'fill-color': c.bosque } },
         { id: 'pasto', type: 'fill', source: 'base', 'source-layer': 'landcover', filter: clase(['grass', 'wetland']), paint: { 'fill-color': c.verde } },
         // sombras del relieve: los cerros orientales se ven en volumen
-        { id: 'sombras', type: 'hillshade', source: 'relieve', paint: { 'hillshade-exaggeration': oscuro ? 0.45 : 0.32,
+        { id: 'sombras', type: 'hillshade', source: 'relieve', layout: { visibility: LIVIANO ? 'none' : 'visible' }, paint: { 'hillshade-exaggeration': oscuro ? 0.45 : 0.32,
           'hillshade-shadow-color': oscuro ? '#000000' : '#6b6b78', 'hillshade-highlight-color': oscuro ? '#2a2a30' : '#ffffff', 'hillshade-accent-color': oscuro ? '#101014' : '#8a8a96' } },
         { id: 'agua', type: 'fill', source: 'base', 'source-layer': 'water', paint: { 'fill-color': c.agua } },
         { id: 'rios', type: 'line', source: 'base', 'source-layer': 'waterway', paint: { 'line-color': c.agua, 'line-width': z([11, 1, 16, 4]) } },
@@ -539,7 +589,8 @@
     maplibregl.addProtocol('at', protocolo);
     var inicio = E.lugares[0] ? [E.lugares[0].lon, E.lugares[0].lat] : [-74.085, 4.66];
     mapa = new maplibregl.Map({ container: 'mapa', style: estilo(temaOscuro()), center: [-74.09, 4.64], zoom: 10,
-                                minZoom: 9.3, maxZoom: 18, maxBounds: CAJA, attributionControl: false, dragRotate: false, pitchWithRotate: false, touchPitch: false });
+                                minZoom: 9.3, maxZoom: 18, maxBounds: CAJA, attributionControl: false,
+                                pixelRatio: Math.min(window.devicePixelRatio || 1, 2), fadeDuration: LIVIANO ? 0 : 300, maxTileCacheSize: LIVIANO ? 60 : null, dragRotate: false, pitchWithRotate: false, touchPitch: false });
     mapa.touchZoomRotate.disableRotation();
     mapa.keyboard.disableRotation();
     mapa.on('error', function () { /* teselas fuera de la zona empaquetada: se usa la de menor detalle */ });
@@ -548,7 +599,7 @@
       // vuelo de entrada: la camara baja desde la sabana hasta tu ubicacion o tu casa, inclinada
       var destinoVuelo = ubi.lat !== null ? [ubi.lon, ubi.lat] : (E.lugares[0] ? [E.lugares[0].lon, E.lugares[0].lat] : inicio);
       if (!activo && linea === null) {
-        if (pocoMovimiento()) mapa.jumpTo({ center: destinoVuelo, zoom: 12.8, pitch: 45 });
+        if (pocoMovimiento() || LIVIANO) mapa.jumpTo({ center: destinoVuelo, zoom: 12.8, pitch: LIVIANO ? 35 : 45 });
         else mapa.flyTo({ center: destinoVuelo, zoom: 12.8, pitch: 45, duration: 2600, curve: 1.5 });
       }
       if (activo) dibujarTrayecto(activo.tr, activo.desde, activo.hasta, true, activo.v);
@@ -556,24 +607,27 @@
     });
     mapa.on('click', alTocarMapa);
     // relieve 3D solo en vista inclinada (en 2D no se nota y cuesta)
-    var conTerreno = false;
+    var conTerreno = false, esperaTerreno = 0;
     function revisarTerreno() {
-      var quiere = mapa.getPitch() > 8;
+      if (LIVIANO || mapa.isMoving()) return;
+      // en la vista de una ruta el 3D lo da la cinta: sin relieve para que el cambio 3D/2D sea fluido
+      var quiere = mapa.getPitch() > 8 && linea === null;
       if (quiere === conTerreno || !mapa.getSource('relieve')) return;
       conTerreno = quiere;
       try { mapa.setTerrain(quiere ? { source: 'relieve', exaggeration: 1.25 } : null); } catch (e) { conTerreno = false; }
     }
-    // fluidez: las animaciones se pausan mientras se mueve el mapa y se dibuja con menos pixeles
-    var nitido = Math.min(window.devicePixelRatio || 1, 2), fluido = Math.min(nitido, esAncho() ? 1.5 : 1.25), esperaNitidez = 0, propio = false;
-    function ponerNitidez(r) { if (!mapa.setPixelRatio || Math.abs(mapa.getPixelRatio() - r) < 0.01) return; propio = true; mapa.setPixelRatio(r); propio = false; }
-    mapa.on('movestart', function () { if (propio) return; moviendoMapa = true; clearTimeout(esperaNitidez); if (nitido !== fluido) ponerNitidez(fluido); });
-    mapa.on('moveend', function () {
-      if (propio) return;
-      moviendoMapa = false; revisarTerreno(); marcar3d();
-      clearTimeout(esperaNitidez);
-      if (nitido !== fluido) esperaNitidez = setTimeout(function () { if (!moviendoMapa) ponerNitidez(nitido); }, 250);
+    // se espera a que la camara quede quieta: prender o apagar el relieve recarga todo
+    terreno.programar = function () { clearTimeout(esperaTerreno); esperaTerreno = setTimeout(revisarTerreno, 400); };
+    terreno.apagar = function () { clearTimeout(esperaTerreno); if (!conTerreno) return; conTerreno = false; try { mapa.setTerrain(null); } catch (e) { /* nada */ } };
+    // fluidez: las animaciones se pausan mientras se mueve el mapa (la nitidez queda fija: cambiarla traba Safari)
+    mapa.on('movestart', function () { moviendoMapa = true; });
+    mapa.on('moveend', function () { moviendoMapa = false; terreno.programar(); marcar3d(); });
+    mapa.on('webglcontextlost', function () { tostada('El mapa se está recargando…'); });
+    mapa.on('webglcontextrestored', function () {
+      if (activo) dibujarTrayecto(activo.tr, activo.desde, activo.hasta, true, activo.v);
+      else if (linea !== null && lineaInfo) dibujarLinea(linea, lineaInfo.sinServicio ? null : lineaInfo);
     });
-    mapa.on('styledata', function () { if (conTerreno && !mapa.getTerrain()) { conTerreno = false; revisarTerreno(); } });
+    mapa.on('styledata', function () { if (conTerreno && !mapa.getTerrain()) { conTerreno = false; terreno.programar(); } });
     // el cielo cambia con la hora del dia
     setInterval(function () { if (mapa.setSky && mapaListo) mapa.setSky(cielo(temaOscuro())); }, 5 * 60000);
     var oscuroAntes = temaOscuro();
@@ -583,7 +637,7 @@
       oscuroAntes = o;
       conTerreno = false;
       mapa.setStyle(estilo(o));
-      mapa.once('styledata', revisarTerreno);
+      mapa.once('styledata', terreno.programar);
     }
     new MutationObserver(revisarTema).observe(raiz, { attributes: true, attributeFilter: ['data-theme'] });
     if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', revisarTema);
@@ -780,8 +834,15 @@
     if (!cam) { mapa.easeTo({ pitch: 0, bearing: 0, duration: 0 }); encuadrar(coords, 14); return; }
     mapa.easeTo({ center: cam.center, zoom: Math.max(9.5, cam.zoom - 0.35), pitch: 55, bearing: -14, duration: pocoMovimiento() ? 0 : 1100 });
   }
+  // la cinta 3D de la ruta se calcula una vez y se guarda: cambiar a 2D solo la oculta
+  function ponerCinta() {
+    var d = lineaDibujo;
+    if (d && d.tiempos && d.total && !plano && !d.cinta) d.cinta = cintaDe(d.coords, d.tiempos, d.total, d.color);
+    datosMapa.cinta = fc(d && d.cinta && !plano ? d.cinta : []);
+    ponerDatos(['cinta']);
+  }
   function salirDeLinea() {
-    linea = null; lineaInfo = null; lineaSel = null;
+    linea = null; lineaInfo = null; lineaSel = null; lineaDibujo = null;
     datosMapa.cinta = VACIO; ponerDatos(['cinta']);
     quitarSenales();
     if (mapa && (mapa.getPitch() || mapa.getBearing())) mapa.easeTo({ pitch: 0, bearing: 0, duration: pocoMovimiento() ? 0 : 500 });
@@ -811,8 +872,9 @@
       activo = null;
       datosMapa.ruta = fc(coords.length > 1 ? [trazo(coords, { tipo: 'linea', color: color })] : []);
       datosMapa.rutaCompleta = VACIO; datosMapa.rutaParadas = fc(paradas);
-      datosMapa.cinta = fc(tiempos && total && !plano ? cintaDe(coords, tiempos, total, color) : []);
-      ponerDatos(['ruta', 'rutaCompleta', 'rutaParadas', 'cinta']);
+      lineaDibujo = { coords: coords, tiempos: tiempos, total: total, color: color, cinta: null };
+      ponerCinta();
+      ponerDatos(['ruta', 'rutaCompleta', 'rutaParadas']);
       quitarSenales();
       if (total) {
         ponerSenal(red.lon[p.s[a]], red.lat[p.s[a]], info.enServicio ? 'Sale ' + hora12(info.sale) : 'Sin servicio ahora', 'neutra', 'bus');
@@ -1890,10 +1952,22 @@
     return h('a', { class: 'boton claro chico', href: 'https://www.waze.com/ul?ll=' + lat.toFixed(5) + '%2C' + lon.toFixed(5) + '&zoom=14', target: '_blank', rel: 'noopener noreferrer' }, icono('trafico'), 'Tráfico en Waze');
   }
   function centroTramo(t) { var p = red.pat[t.pat], q = p.s[Math.round((t.posSube + t.posBaja) / 2)]; return [red.lon[q], red.lat[q]]; }
+  var cambiando3d = false;
   function alternar3d() {
-    if (!mapa) return;
-    var en3d = mapa.getPitch() > 5;
-    mapa.easeTo({ pitch: en3d ? 0 : 50, bearing: 0, duration: pocoMovimiento() ? 0 : 700 });
+    if (!mapa || cambiando3d) return;          // toques repetidos mientras gira se ignoran
+    var en3d = linea !== null && lineaDibujo ? !plano : mapa.getPitch() > 5;
+    cambiando3d = true;
+    var listo = function () { cambiando3d = false; marcar3d(); };
+    var seguro = setTimeout(listo, 1600);
+    mapa.stop();
+    if (en3d) terreno.apagar();                // el relieve se apaga antes de bajar la camara
+    mapa.once('moveend', function () { clearTimeout(seguro); listo(); });
+    if (linea !== null && lineaDibujo) {
+      plano = en3d; ponerCinta();
+      if (vista === 'linea') pintar();
+      if (!en3d) { camaraLinea(lineaDibujo.coords); return; }
+    }
+    mapa.easeTo({ pitch: en3d ? 0 : 50, bearing: 0, duration: pocoMovimiento() ? 0 : 600 });
   }
   function marcar3d() { var b = $('c-3d'); if (b && mapa) { var en3d = mapa.getPitch() > 5; b.firstChild.textContent = en3d ? '2D' : '3D'; b.setAttribute('aria-label', en3d ? 'Ver el mapa plano' : 'Ver el mapa en 3D'); } }
   function vivoDeViaje(v) {
@@ -2513,7 +2587,11 @@
   function abrirBuscador(contexto, volver) { busqueda = { contexto: contexto, texto: '', volver: volver || null }; ir('buscar'); if (!esAncho()) fijarPanel('max'); }
   function elegirResultado(ref, punto0) {
     var ctx = busqueda.contexto;
-    if (ctx === 'desde' || ctx === 'hasta') { Q[ctx] = ref; ir('ruta'); if (!esAncho()) fijarPanel('medio'); calcularRuta(); return; }
+    if (ctx === 'desde' || ctx === 'hasta') {
+      Q[ctx] = ref;
+      // desde "¿A donde vas?" el origen es tu ubicacion o Casa, como dice la pantalla
+      if (ctx === 'hasta' && !Q.desde) { var o = origenPorDefecto(); if (o && !(o.tipo === 'lugar' && ref.tipo === 'lugar' && o.id === ref.id)) Q.desde = o; }
+      ir('ruta'); if (!esAncho()) fijarPanel('medio'); calcularRuta(); return; }
     if (!esAncho()) fijarPanel('medio');
     if (ref.tipo === 'lugar') { seleccionar({ tipo: 'lugar', id: ref.id }); return; }
     seleccionar(punto0);
@@ -2673,7 +2751,7 @@
       h('div', { class: 'dato' }, h('small', { text: 'Pasa cada' }), h('b', { text: info.cada ? minutos(info.cada) : '—' })),
       h('div', { class: 'dato' }, h('small', { text: 'Paraderos' }), h('b', { text: String(info.paraderos.length) }))));
     c.appendChild(h('div', { class: 'botones' },
-      boton(plano ? 'Ver en 3D' : 'Vista plana', 'claro chico', function () { plano = !plano; dibujarLinea(r, info); pintar(); }, plano ? '3d' : 'mapa'),
+      boton(plano ? 'Ver en 3D' : 'Vista plana', 'claro chico', alternar3d, plano ? '3d' : 'mapa'),
       boton('Buses en vivo', 'claro chico', function () { busesDeRuta(r); }, 'vivo'),
       (function () { var q = info.paraderos[Math.floor(info.paraderos.length / 2)]; return enlaceWaze(red.lon[q], red.lat[q]); })()));
     c.appendChild(h('div', { class: 'seccion', text: 'Paraderos y minutos desde el inicio' }));
@@ -2970,7 +3048,10 @@
       datosViejos() ? h('div', { class: 'mini naranja', style: 'margin-top:4px', text: 'Tiene más de 30 días: pide a Claude que lo actualice.' }) : null,
       h('div', { class: 'mini', style: 'margin-top:4px', text: 'Llegadas, buses y alertas en vivo: Croma, al minuto.' })));
 
+    c.appendChild(h('div', { class: 'seccion', text: 'Versión piloto' }));
+    c.appendChild(seccionComentarios());
     c.appendChild(h('div', { class: 'seccion', text: 'Acerca de' }));
+    c.appendChild(h('p', { class: 'mini', text: 'A Tiempo · ' + VERSION + (LIVIANO ? ' · mapa liviano' : '') }));
     c.appendChild(h('p', { class: 'mini', text: 'Mapa: OpenStreetMap, OpenMapTiles y OpenFreeMap. Las alertas son las oficiales de TransMilenio; el tráfico se calcula con el horario y con los buses en vivo.' }));
     c.appendChild(h('p', { class: 'mini', text: 'La app no puede leer la tarjeta por NFC ni avisar cuando está cerrada. Tus lugares y rutinas se guardan en tu espacio privado.' }));
   }
@@ -3055,7 +3136,14 @@
     fijarPanel('medio');
     pintarFiltros();
     iniciarMapa();
-    leerJson('red/base.json').then(function (b) {
+    cargarRed();
+  }
+  function seguro(f) { try { f(); } catch (e) { if (window.console) console.warn('A Tiempo:', f.name, e); } }
+  var redLista = false;
+  function cargarRed() {
+    var c = $('contenido');
+    c.textContent = ''; c.appendChild(cabecera('A Tiempo')); c.appendChild(espera('Cargando la red de transporte…'));
+    leerJson('red/base.json', 30000).then(function (b) {
       base = b; red = P.crearRed(b);
       prepararBusqueda();
       cargarCapasTransporte();
@@ -3064,16 +3152,16 @@
       // al abrir la app aparece la pantalla "A donde vas?" (una vez por sesion)
       if (!destinoVisto) { destinoVisto = true; vista = 'destino'; if (!esAncho()) fijarPanel('max'); }
       pintar();
-      iniciarNube();
-      iniciarVivo();
-      iniciarJarvis();
-      iniciarUbicacion();
+      if (redLista) return;
+      redLista = true;
+      [iniciarNube, iniciarVivo, iniciarJarvis, iniciarUbicacion].forEach(seguro);
       setInterval(tic, 20000);
     }).catch(function () {
-      var c = $('contenido');
+      base = null;
       c.textContent = '';
       c.appendChild(cabecera('A Tiempo'));
-      c.appendChild(h('div', { class: 'vacio', text: 'No se pudo cargar la red de transporte. Revisa tu conexión y vuelve a abrir la app.' }));
+      c.appendChild(h('div', { class: 'vacio', text: 'No se pudo cargar la red de transporte. Revisa tu conexión.' }));
+      c.appendChild(h('div', { class: 'botones' }, boton('Reintentar', 'principal', cargarRed, 'cambiar')));
     });
   }
 
