@@ -164,12 +164,15 @@
   function diaSemana(fecha) { var p = partes(fecha); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); }
   function fechaLarga(fecha) { var p = partes(fecha); return DIAS[diaSemana(fecha)] + ' ' + p[2] + ' de ' + MESES[p[1] - 1]; }
   function esAncho() { return window.innerWidth >= 900; }
-  // iPhone, iPad y equipos con poca memoria: mapa sin relieve y sin cambios de nitidez (Safari se traba o recarga la pagina)
+  // celulares, tabletas y equipos con poca memoria: mapa sin relieve y sin cambios de nitidez (se traba o recarga la pagina)
   var VERSION = 'Piloto 1';
   var LIVIANO = (function () {
     try { var forzado = localStorage.getItem('atiempo.liviano'); if (forzado === '1') return true; if (forzado === '0') return false; } catch (e) { /* sin almacenamiento */ }
     var ua = navigator.userAgent || '';
-    return /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || (navigator.deviceMemory > 0 && navigator.deviceMemory < 4);
+    var tactil = false;
+    try { tactil = window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches; } catch (e) { /* navegador viejo */ }
+    // todo celular o tableta (iPhone, iPad, Android) usa el mapa liviano: el relieve 3D traba el arrastre y el zoom
+    return tactil || /iPhone|iPad|iPod|Android|Mobile/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || (navigator.deviceMemory > 0 && navigator.deviceMemory < 4);
   })();
   function pocoMovimiento() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
 
@@ -1105,6 +1108,8 @@
     return Math.round(Math.max(240, Math.min(H * 0.47, H - 230)));
   }
   function fijarPanel(estado) {
+    // si el panel estaba escondido (solo mapa) y algo pide mostrarlo, vuelve a aparecer
+    if (estado !== 'min' && soloMapa()) { $('app').classList.remove('solo-mapa'); $('mostrar-panel').hidden = true; }
     panelEstado = estado;
     $('app').setAttribute('data-panel', estado);
     if (esAncho()) { raiz.style.removeProperty('--panel-px'); return; }
@@ -1639,6 +1644,7 @@
   function ir(nombre) {
     var saliaDeGuia = vista === 'camino' && nombre !== vista;
     var cambia = vista !== nombre, c = $('contenido');
+    if (cambia && soloMapa()) fijarPanel(panelEstado === 'min' ? 'medio' : panelEstado);
     vista = nombre;
     if (saliaDeGuia) pintarSenales();
     if (nombre === 'hoy' || nombre === 'rutinas' || nombre === 'ajustes') pestana = nombre;
@@ -1867,7 +1873,7 @@
           progreso('Consultando llegadas en ' + base.par.nom[i] + '…');
           resaltar(red.lon[i], red.lat[i]); volar(red.lon[i], red.lat[i], 15.5);
           return llamar('transmilenio_stop_arrivals', { stop_id: base.par.id[i], limit: 10 }).then(function (d) {
-            return { paradero: base.par.nom[i], llegadas: (d.arrivals || []).slice(0, 8).map(function (a) { return { ruta: a.route_code || '', destino: a.route_name || '', en_min: a.minutes_away }; }) };
+            return { paradero: base.par.nom[i], llegadas: (d.arrivals || []).slice(0, 8).map(function (a) { return { ruta: a.route_code || '', destino: a.route_name || '', en_min: minutosLlegada(a) }; }) };
           }, function (e) { throw new Error(textoError(e)); });
         } }
     ];
@@ -2495,10 +2501,16 @@
     s.vivo = { estado: 'cargando' };
     pintar();
     llamar('transmilenio_stop_arrivals', { stop_id: base.par.id[s.i], limit: 14 }).then(function (d) {
-      s.vivo = { estado: 'listo', lista: (d.arrivals || []).map(function (x) { return { cod: x.route_code || '', nombre: x.route_name || '', min: x.minutes_away, sis: 3, ruta: String(x.route_id || '') }; }) };
+      s.vivo = { estado: 'listo', lista: (d.arrivals || []).map(function (x) { return { cod: x.route_code || '', nombre: x.route_name || '', min: minutosLlegada(x), sis: 3, ruta: String(x.route_id || '') }; }) };
       s.vivo.lista.forEach(function (x) { var r = base.rut.id.indexOf(x.ruta); if (r >= 0) x.sis = base.rut.sis[r]; });
       if (seleccion === s && vista === 'toque') pintar();
     }).catch(function (e) { s.vivo = { estado: 'error', error: textoError(e) }; if (seleccion === s && vista === 'toque') pintar(); });
+  }
+  // minutos que faltan para una llegada: el dato directo o, si no viene, la hora prevista
+  function minutosLlegada(x) {
+    if (typeof x.minutes_away === 'number' && isFinite(x.minutes_away)) return Math.round(x.minutes_away);
+    var t = Date.parse(x.predicted_at || x.arrival_time || '');
+    return isNaN(t) ? null : Math.max(0, Math.round((t - ahora().getTime()) / 60000));
   }
   function vistaToque(c) {
     var s = seleccion;
@@ -2539,7 +2551,7 @@
         else {
           var lv = h('div', { class: 'lista' });
           s.vivo.lista.forEach(function (x) {
-            lv.appendChild(h('div', { class: 'item' }, chip(x.sis, x.cod), h('span', { class: 'crece corta', text: x.nombre }), h('span', { class: 'fuerte num', text: (x.min <= 0 ? 'Llegando' : x.min + ' min') })));
+            lv.appendChild(h('div', { class: 'item' }, chip(x.sis, x.cod), h('span', { class: 'crece corta', text: x.nombre }), h('span', { class: 'fuerte num', text: (x.min === null ? '—' : x.min <= 0 ? 'Llegando' : x.min + ' min') })));
           });
           c.appendChild(lv);
         }
